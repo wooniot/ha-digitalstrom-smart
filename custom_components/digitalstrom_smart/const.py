@@ -18,9 +18,8 @@ TELEMETRY_URL = "https://ha-ds.internetist.nl/ha-ds/ping"
 # Pro license check endpoint
 PRO_LICENSE_URL = "https://ha-ds.internetist.nl/ha-ds/license"
 
-# Connection types
+# Connection type (local only - direct network access to dSS)
 CONN_LOCAL = "local"
-CONN_CLOUD = "cloud"
 
 # --- dS Group IDs ---
 GROUP_BROADCAST = 0

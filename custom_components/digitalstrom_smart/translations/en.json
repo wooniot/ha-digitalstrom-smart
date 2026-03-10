@@ -3,14 +3,7 @@
     "step": {
       "user": {
         "title": "Digital Strom Connection",
-        "description": "Choose how to connect to your Digital Strom Server (dSS).",
-        "data": {
-          "connection_type": "Connection type"
-        }
-      },
-      "local": {
-        "title": "Local Connection",
-        "description": "Enter the IP address of your dSS.",
+        "description": "Enter the IP address of your dSS. Your dSS must be reachable on your local network (dSS20 or newer required).",
         "data": {
           "host": "IP address",
           "port": "Port"
@@ -19,23 +12,10 @@
       "approve_token": {
         "title": "Approve Application",
         "description": "Approve the WoonIoT connection in your Digital Strom Configurator:\n\n1. Open the dSS admin interface in your browser\n2. Go to System > Access Authorization\n3. Find 'WoonIoT HA Connect' and check the box to approve\n\nToken: {token}\n\nClick Submit after approving."
-      },
-      "cloud": {
-        "title": "Cloud Connection",
-        "description": "Enter your Digital Strom cloud URL and credentials.",
-        "data": {
-          "cloud_url": "Cloud URL",
-          "cloud_user": "Username",
-          "cloud_pass": "Password"
-        },
-        "data_description": {
-          "cloud_url": "Example: xxxxx.digitalstrom.net"
-        }
       }
     },
     "error": {
-      "cannot_connect": "Cannot connect to dSS. Check IP/URL and ensure the server is reachable.",
-      "invalid_auth": "Invalid credentials.",
+      "cannot_connect": "Cannot connect to dSS. Check IP address and ensure the server is reachable on your local network.",
       "token_not_approved": "Token not yet approved. Approve the connection in dSS admin under Access Authorization."
     },
     "abort": {

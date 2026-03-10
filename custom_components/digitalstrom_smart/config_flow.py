@@ -1,6 +1,5 @@
 """Config flow for digitalSTROM Smart integration."""
 
-import asyncio
 import logging
 
 import voluptuous as vol
@@ -9,16 +8,12 @@ from homeassistant import config_entries
 from homeassistant.const import CONF_HOST, CONF_PORT
 from homeassistant.core import callback
 
-from .api import DigitalStromApi, DigitalStromApiError, DigitalStromAuthError
+from .api import DigitalStromApi, DigitalStromApiError
 from .const import (
     DOMAIN,
     CONN_LOCAL,
-    CONN_CLOUD,
     CONF_CONNECTION_TYPE,
     CONF_APP_TOKEN,
-    CONF_CLOUD_URL,
-    CONF_CLOUD_USER,
-    CONF_CLOUD_PASS,
     CONF_ENABLED_ZONES,
     CONF_DSS_ID,
     CONF_INVERT_COVER,
@@ -27,26 +22,10 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
-STEP_USER_SCHEMA = vol.Schema(
-    {
-        vol.Required(CONF_CONNECTION_TYPE, default=CONN_LOCAL): vol.In(
-            {CONN_LOCAL: "Local (IP address)", CONN_CLOUD: "Cloud (*.digitalstrom.net)"}
-        ),
-    }
-)
-
 STEP_LOCAL_SCHEMA = vol.Schema(
     {
         vol.Required(CONF_HOST, default="192.168.1.x"): str,
         vol.Required(CONF_PORT, default=8080): int,
-    }
-)
-
-STEP_CLOUD_SCHEMA = vol.Schema(
-    {
-        vol.Required(CONF_CLOUD_URL): str,
-        vol.Required(CONF_CLOUD_USER, default="dssadmin"): str,
-        vol.Required(CONF_CLOUD_PASS): str,
     }
 )
 
@@ -59,22 +38,10 @@ class DigitalStromSmartConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     def __init__(self) -> None:
         self._api: DigitalStromApi | None = None
         self._pending_token: str | None = None
-        self._connection_type: str | None = None
         self._data: dict = {}
-        self._zones: dict[int, str] = {}
 
     async def async_step_user(self, user_input=None):
-        """Step 1: Choose local or cloud connection."""
-        if user_input is not None:
-            self._connection_type = user_input[CONF_CONNECTION_TYPE]
-            if self._connection_type == CONN_LOCAL:
-                return await self.async_step_local()
-            return await self.async_step_cloud()
-
-        return self.async_show_form(step_id="user", data_schema=STEP_USER_SCHEMA)
-
-    async def async_step_local(self, user_input=None):
-        """Step 2a: Local connection - enter IP and request app token."""
+        """Step 1: Enter dSS IP address and port."""
         errors = {}
 
         if user_input is not None:
@@ -96,17 +63,16 @@ class DigitalStromSmartConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 errors["base"] = "cannot_connect"
 
         return self.async_show_form(
-            step_id="local",
+            step_id="user",
             data_schema=STEP_LOCAL_SCHEMA,
             errors=errors,
         )
 
     async def async_step_approve_token(self, user_input=None):
-        """Step 2a-2: Wait for user to press meter button."""
+        """Step 2: Wait for user to approve token in dSS admin."""
         errors = {}
 
         if user_input is not None:
-            # Check if token was approved
             approved = await self._api.check_app_token(self._pending_token)
             if approved:
                 self._data[CONF_APP_TOKEN] = self._pending_token
@@ -122,42 +88,6 @@ class DigitalStromSmartConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             },
         )
 
-    async def async_step_cloud(self, user_input=None):
-        """Step 2b: Cloud connection."""
-        errors = {}
-
-        if user_input is not None:
-            cloud_url = user_input[CONF_CLOUD_URL].rstrip("/")
-            if not cloud_url.startswith("https://"):
-                cloud_url = f"https://{cloud_url}"
-
-            self._api = DigitalStromApi(
-                host="",
-                cloud_url=cloud_url,
-                cloud_user=user_input[CONF_CLOUD_USER],
-                cloud_pass=user_input[CONF_CLOUD_PASS],
-            )
-            self._data = {
-                CONF_CONNECTION_TYPE: CONN_CLOUD,
-                CONF_CLOUD_URL: cloud_url,
-                CONF_CLOUD_USER: user_input[CONF_CLOUD_USER],
-                CONF_CLOUD_PASS: user_input[CONF_CLOUD_PASS],
-            }
-
-            try:
-                await self._api.connect()
-                return await self._finish_setup()
-            except DigitalStromAuthError:
-                errors["base"] = "invalid_auth"
-            except DigitalStromApiError:
-                errors["base"] = "cannot_connect"
-
-        return self.async_show_form(
-            step_id="cloud",
-            data_schema=STEP_CLOUD_SCHEMA,
-            errors=errors,
-        )
-
     async def _finish_setup(self):
         """Get structure and create entry."""
         try:
@@ -170,8 +100,7 @@ class DigitalStromSmartConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             # Get dSS unique identifier
             dss_id = version.get("dSUID", "") or version.get("MachineID", "")
             if not dss_id:
-                # Fallback: use host or cloud URL as identifier
-                dss_id = self._data.get(CONF_HOST, "") or self._data.get(CONF_CLOUD_URL, "")
+                dss_id = self._data.get(CONF_HOST, "")
             self._data[CONF_DSS_ID] = dss_id
 
             # Prevent duplicate entries for same dSS
@@ -193,7 +122,7 @@ class DigitalStromSmartConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             await self._api.close()
             return self.async_create_entry(title=title, data=self._data)
 
-        except DigitalStromApiError as err:
+        except DigitalStromApiError:
             await self._api.close()
             return self.async_abort(reason="cannot_connect")
 
