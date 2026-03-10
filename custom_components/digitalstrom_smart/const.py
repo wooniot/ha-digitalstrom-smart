@@ -10,7 +10,7 @@ INTEGRATION_VERSION = "1.0.0"
 DSS_APP_NAME = "WoonIoT HA Connect"
 
 # Telemetry endpoint (opt-in, anonymous)
-TELEMETRY_URL = "https://api.wooniot.nl/ha-ds/ping"
+TELEMETRY_URL = "https://ha-ds.internetist.nl/ha-ds/ping"
 
 # Connection types
 CONN_LOCAL = "local"
