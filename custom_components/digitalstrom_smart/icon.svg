@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="none">
+  <!-- House shape -->
+  <path d="M128 20L20 110V236H100V170H156V236H236V110L128 20Z" fill="#1a73e8" stroke="#1a73e8" stroke-width="4" stroke-linejoin="round"/>
+  <!-- Power button circle -->
+  <circle cx="128" cy="128" r="40" fill="white" opacity="0.95"/>
+  <!-- Power icon - vertical line -->
+  <line x1="128" y1="98" x2="128" y2="128" stroke="#1a73e8" stroke-width="8" stroke-linecap="round"/>
+  <!-- Power icon - arc -->
+  <path d="M108 108 A30 30 0 1 0 148 108" stroke="#1a73e8" stroke-width="8" stroke-linecap="round" fill="none"/>
+</svg>
