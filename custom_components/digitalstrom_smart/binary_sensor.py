@@ -1,4 +1,4 @@
-"""Binary sensor entities for digitalSTROM.
+"""Binary sensor entities for Digital Strom.
 
 Exposes device on/off state as binary sensors for Joker (black) devices.
 PRO FEATURE - requires license key.
@@ -26,7 +26,7 @@ async def async_setup_entry(
     entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up digitalSTROM binary sensors for Joker devices."""
+    """Set up Digital Strom binary sensors for Joker devices."""
     data = hass.data[DOMAIN][entry.entry_id]
     coordinator: DigitalStromCoordinator = data["coordinator"]
     enabled_zones = entry.data.get(CONF_ENABLED_ZONES, [])
@@ -46,7 +46,7 @@ async def async_setup_entry(
 
 
 class DigitalStromBinarySensor(CoordinatorEntity, BinarySensorEntity):
-    """A digitalSTROM binary sensor (Joker device state)."""
+    """A Digital Strom binary sensor (Joker device state)."""
 
     _attr_has_entity_name = True
     _attr_device_class = BinarySensorDeviceClass.OCCUPANCY

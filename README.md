@@ -1,13 +1,13 @@
-# digitalSTROM Smart for Home Assistant
+# Digital Strom Smart for Home Assistant
 
 [![HACS Badge](https://img.shields.io/badge/HACS-Default-41BDF5.svg)](https://github.com/hacs/integration)
 [![GitHub Release](https://img.shields.io/github/v/release/wooniot/ha-digitalstrom-smart)](https://github.com/wooniot/ha-digitalstrom-smart/releases)
 
-A zone-based, event-driven Home Assistant integration for **digitalSTROM** home automation systems. Built by [Woon IoT BV](https://wooniot.nl) — digitalSTROM installation specialists.
+A zone-based, event-driven Home Assistant integration for **Digital Strom** home automation systems. Built by [Woon IoT BV](https://wooniot.nl) — Digital Strom installation specialists.
 
 ## Requirements
 
-- **digitalSTROM Server**: dSS20 or newer (firmware 1.19.x+)
+- **Digital Strom Server**: dSS20 or newer (firmware 1.19.x+)
 - **Home Assistant**: 2024.1.0 or newer
 - **Connection**: Local network access to your dSS (HTTPS, default port 8080)
 
@@ -15,9 +15,9 @@ A zone-based, event-driven Home Assistant integration for **digitalSTROM** home 
 
 ## Why this integration?
 
-Unlike traditional per-device polling integrations, digitalSTROM Smart uses the **scene-based architecture** that digitalSTROM was designed for:
+Unlike traditional per-device polling integrations, Digital Strom Smart uses the **scene-based architecture** that Digital Strom was designed for:
 
-| | Traditional approach | digitalSTROM Smart |
+| | Traditional approach | Digital Strom Smart |
 |--|---------------------|-------------------|
 | **Control method** | Individual device commands | Zone scenes (one command, all devices respond) |
 | **State updates** | Polling every 10-30s per device | Real-time event subscription |
@@ -30,7 +30,7 @@ Unlike traditional per-device polling integrations, digitalSTROM Smart uses the 
 
 - **Zone-based lights** with brightness control
 - **Zone-based covers** (blinds/shades) with position control and direction inversion
-- **Scene activation** with imported dS scene names (the recommended way to control digitalSTROM)
+- **Scene activation** with imported dS scene names (the recommended way to control Digital Strom)
 - **Temperature sensors** per zone
 - **Energy monitoring** (apartment-level power consumption)
 - **Pause/Resume** switch for safe dS Configurator use
@@ -53,7 +53,7 @@ Unlock advanced features with a Pro license key from [wooniot.nl/pro](https://wo
 ### HACS (recommended)
 
 1. Open HACS in Home Assistant
-2. Search for "digitalSTROM Smart"
+2. Search for "Digital Strom Smart"
 3. Click Install
 4. Restart Home Assistant
 
@@ -121,7 +121,7 @@ When you need to use the **dS Configurator** to modify your installation:
 ```
 Home Assistant
   │
-  └── digitalSTROM Smart
+  └── Digital Strom Smart
         │
         ├── Event Listener (long-poll)
         │     ├── callScene / undoScene → Light, Cover, Scene state
@@ -138,15 +138,15 @@ Home Assistant
 
 ## Supported hardware
 
-- **dSS20** (minimum) or newer digitalSTROM Server
-- All digitalSTROM device types: GE (light), GR (shade), SW (joker/black), BL (blinds)
+- **dSS20** (minimum) or newer Digital Strom Server
+- All Digital Strom device types: GE (light), GR (shade), SW (joker/black), BL (blinds)
 - dSM meters (energy monitoring)
 - Temperature, humidity, brightness, wind, pressure sensors
 - Climate control zones (heating/cooling)
 
 ## About
 
-Developed by **[Woon IoT BV](https://wooniot.nl)** — professional digitalSTROM installers and smart home specialists based in the Netherlands.
+Developed by **[Woon IoT BV](https://wooniot.nl)** — professional Digital Strom installers and smart home specialists based in the Netherlands.
 
 - Website: [wooniot.nl](https://wooniot.nl)
 - Pro license: [wooniot.nl/pro](https://wooniot.nl/pro)

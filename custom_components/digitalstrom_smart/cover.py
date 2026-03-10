@@ -1,4 +1,4 @@
-"""Zone-based cover entities for digitalSTROM.
+"""Zone-based cover entities for Digital Strom.
 
 Supports position inversion for installations where the motor
 direction is reversed (common with external blinds/screens).
@@ -39,7 +39,7 @@ async def async_setup_entry(
     entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up digitalSTROM covers."""
+    """Set up Digital Strom covers."""
     data = hass.data[DOMAIN][entry.entry_id]
     coordinator: DigitalStromCoordinator = data["coordinator"]
     enabled_zones = entry.data.get(CONF_ENABLED_ZONES, [])
@@ -58,7 +58,7 @@ async def async_setup_entry(
 
 
 class DigitalStromCover(CoordinatorEntity, CoverEntity):
-    """A digitalSTROM zone cover (blinds/shades).
+    """A Digital Strom zone cover (blinds/shades).
 
     When invert_position is True:
     - dS 0 (closed) maps to HA 100 (open) and vice versa

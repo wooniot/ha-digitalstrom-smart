@@ -1,4 +1,4 @@
-"""Scene entities for digitalSTROM zones.
+"""Scene entities for Digital Strom zones.
 
 Creates scenes for light, shade, and heating groups using
 names imported from the dSS Configurator.
@@ -41,7 +41,7 @@ async def async_setup_entry(
     entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up digitalSTROM scenes."""
+    """Set up Digital Strom scenes."""
     data = hass.data[DOMAIN][entry.entry_id]
     coordinator: DigitalStromCoordinator = data["coordinator"]
     enabled_zones = entry.data.get(CONF_ENABLED_ZONES, [])
@@ -68,7 +68,7 @@ async def async_setup_entry(
 
 
 class DigitalStromScene(Scene):
-    """A digitalSTROM scene (primary automation method)."""
+    """A Digital Strom scene (primary automation method)."""
 
     _attr_has_entity_name = True
 

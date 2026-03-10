@@ -1,4 +1,4 @@
-"""Climate entities for digitalSTROM zones.
+"""Climate entities for Digital Strom zones.
 
 Full thermostat control: set target temperature, switch heating modes.
 PRO FEATURE - requires license key.
@@ -60,7 +60,7 @@ async def async_setup_entry(
     entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up digitalSTROM climate entities."""
+    """Set up Digital Strom climate entities."""
     data = hass.data[DOMAIN][entry.entry_id]
     coordinator: DigitalStromCoordinator = data["coordinator"]
     enabled_zones = entry.data.get(CONF_ENABLED_ZONES, [])
@@ -80,7 +80,7 @@ async def async_setup_entry(
 
 
 class DigitalStromClimate(CoordinatorEntity, ClimateEntity):
-    """A digitalSTROM zone thermostat."""
+    """A Digital Strom zone thermostat."""
 
     _attr_has_entity_name = True
     _attr_temperature_unit = UnitOfTemperature.CELSIUS

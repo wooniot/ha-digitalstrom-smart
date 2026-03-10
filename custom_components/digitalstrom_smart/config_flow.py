@@ -1,4 +1,4 @@
-"""Config flow for digitalSTROM Smart integration."""
+"""Config flow for Digital Strom Smart integration."""
 
 import logging
 
@@ -31,7 +31,7 @@ STEP_LOCAL_SCHEMA = vol.Schema(
 
 
 class DigitalStromSmartConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
-    """Handle a config flow for digitalSTROM Smart."""
+    """Handle a config flow for Digital Strom Smart."""
 
     VERSION = 1
 
@@ -133,7 +133,7 @@ class DigitalStromSmartConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
 
 class DigitalStromOptionsFlow(config_entries.OptionsFlow):
-    """Handle options for digitalSTROM Smart."""
+    """Handle options for Digital Strom Smart."""
 
     def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
         self._config_entry = config_entry

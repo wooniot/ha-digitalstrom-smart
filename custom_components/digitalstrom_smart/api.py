@@ -1,4 +1,4 @@
-"""Async API client for digitalSTROM Server (dSS).
+"""Async API client for Digital Strom Server (dSS).
 
 Complete JSON API coverage - the definitive dSS client for Home Assistant.
 Developed by Woon IoT BV - https://wooniot.nl

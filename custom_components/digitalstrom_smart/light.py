@@ -1,4 +1,4 @@
-"""Zone-based light entities for digitalSTROM."""
+"""Zone-based light entities for Digital Strom."""
 
 import logging
 from typing import Any
@@ -31,7 +31,7 @@ async def async_setup_entry(
     entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up digitalSTROM lights."""
+    """Set up Digital Strom lights."""
     data = hass.data[DOMAIN][entry.entry_id]
     coordinator: DigitalStromCoordinator = data["coordinator"]
     enabled_zones = entry.data.get(CONF_ENABLED_ZONES, [])
@@ -47,7 +47,7 @@ async def async_setup_entry(
 
 
 class DigitalStromLight(CoordinatorEntity, LightEntity):
-    """A digitalSTROM zone light (controls all lights in zone via scenes)."""
+    """A Digital Strom zone light (controls all lights in zone via scenes)."""
 
     _attr_has_entity_name = True
     _attr_color_mode = ColorMode.BRIGHTNESS

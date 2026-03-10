@@ -1,4 +1,4 @@
-"""digitalSTROM Smart integration for Home Assistant.
+"""Digital Strom Smart integration for Home Assistant.
 
 The definitive Digital Strom integration - zone-based, event-driven,
 scenes as primary control. Minimal bus load.
@@ -30,7 +30,7 @@ _LOGGER = logging.getLogger(__name__)
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Set up digitalSTROM Smart from a config entry."""
+    """Set up Digital Strom Smart from a config entry."""
     hass.data.setdefault(DOMAIN, {})
 
     # Create API client (local connection only)

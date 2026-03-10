@@ -1,4 +1,4 @@
-"""Event listener and data coordinator for digitalSTROM.
+"""Event listener and data coordinator for Digital Strom.
 
 Central hub: manages event subscriptions, periodic polling,
 scene discovery, sensor data, and state tracking.
@@ -472,7 +472,7 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
 
     async def pause(self) -> None:
         """Pause all dSS communication (for dS Configurator use)."""
-        _LOGGER.info("Pausing digitalSTROM communication")
+        _LOGGER.info("Pausing Digital Strom communication")
         self._paused = True
 
         if self._event_task and not self._event_task.done():
@@ -487,7 +487,7 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
 
     async def resume(self) -> None:
         """Resume communication and re-sync state."""
-        _LOGGER.info("Resuming digitalSTROM communication")
+        _LOGGER.info("Resuming Digital Strom communication")
         self._paused = False
 
         try:

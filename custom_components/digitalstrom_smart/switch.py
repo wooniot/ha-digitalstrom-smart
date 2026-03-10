@@ -1,4 +1,4 @@
-"""Switch entities for digitalSTROM (pause/resume + optional devices)."""
+"""Switch entities for Digital Strom (pause/resume + optional devices)."""
 
 import logging
 
@@ -19,7 +19,7 @@ async def async_setup_entry(
     entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up digitalSTROM switches."""
+    """Set up Digital Strom switches."""
     data = hass.data[DOMAIN][entry.entry_id]
     coordinator: DigitalStromCoordinator = data["coordinator"]
 
@@ -44,7 +44,7 @@ class DigitalStromPauseSwitch(CoordinatorEntity, SwitchEntity):
         self._attr_unique_id = f"ds_{dss_id}_pause_switch"
         self._attr_device_info = {
             "identifiers": {(DOMAIN, f"{dss_id}_apartment")},
-            "name": "digitalSTROM Apartment",
+            "name": "Digital Strom Apartment",
             "manufacturer": MANUFACTURER,
             "model": "dSS",
         }

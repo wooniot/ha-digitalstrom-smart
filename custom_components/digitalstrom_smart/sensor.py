@@ -1,4 +1,4 @@
-"""Sensor entities for digitalSTROM.
+"""Sensor entities for Digital Strom.
 
 Free: apartment power consumption, zone temperature
 Pro: outdoor weather sensors, per-circuit power, humidity, brightness, CO2
@@ -70,7 +70,7 @@ async def async_setup_entry(
     entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up digitalSTROM sensors."""
+    """Set up Digital Strom sensors."""
     data = hass.data[DOMAIN][entry.entry_id]
     coordinator: DigitalStromCoordinator = data["coordinator"]
     enabled_zones = entry.data.get(CONF_ENABLED_ZONES, [])

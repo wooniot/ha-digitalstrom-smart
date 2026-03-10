@@ -1,6 +1,6 @@
 {
   "domain": "digitalstrom_smart",
-  "name": "digitalSTROM Smart",
+  "name": "Digital Strom Smart",
   "codeowners": ["@wooniot"],
   "config_flow": true,
   "dependencies": [],
