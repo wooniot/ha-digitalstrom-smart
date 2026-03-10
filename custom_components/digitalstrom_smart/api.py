@@ -344,6 +344,17 @@ class DigitalStromApi:
             {"id": zone_id, "groupID": group, "value": max(0, min(255, value))},
         )
 
+    async def get_scene_name(self, zone_id: int, group: int, scene_number: int) -> str:
+        """Get the user-defined scene name from dSS. Returns empty string if not set."""
+        try:
+            result = await self._request(
+                "/json/zone/sceneGetName",
+                {"id": zone_id, "groupID": group, "sceneNumber": scene_number},
+            )
+            return result.get("name", "")
+        except DigitalStromApiError:
+            return ""
+
     # --- Event subscription ---
 
     async def subscribe_events(self) -> int:

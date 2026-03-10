@@ -59,6 +59,27 @@ NAMED_SCENES = {
     SCENE_4: "Scene 4",
 }
 
+# Cover scenes (GROUP_SHADE)
+NAMED_SCENES_SHADE = {
+    SCENE_OFF: "Shade Down",
+    SCENE_1: "Shade Preset 1",
+    SCENE_2: "Shade Preset 2",
+    SCENE_3: "Shade Preset 3",
+    SCENE_4: "Shade Preset 4",
+}
+
+# Climate/Heating scenes (GROUP_HEATING)
+GROUP_HEATING_SCENES = {
+    SCENE_OFF: "Comfort Off",
+    SCENE_1: "Comfort",
+    SCENE_2: "Economy",
+    SCENE_3: "Night",
+    SCENE_4: "Holiday",
+}
+
+# Scene number to name lookup from dS getStructure per zone group
+# (populated at runtime from dSS data)
+
 # Polling intervals (seconds)
 POLL_INTERVAL_ENERGY = 300       # 5 min for consumption
 POLL_INTERVAL_TEMPERATURE = 300  # 5 min for temp control values
@@ -79,6 +100,9 @@ CONF_CLOUD_USER = "cloud_user"
 CONF_CLOUD_PASS = "cloud_pass"
 CONF_ENABLED_ZONES = "enabled_zones"
 CONF_DSS_ID = "dss_id"
+
+# Config keys for options
+CONF_INVERT_COVER = "invert_cover_position"
 
 # Platforms
 PLATFORMS = ["light", "cover", "sensor", "scene", "switch"]

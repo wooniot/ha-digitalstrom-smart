@@ -2,8 +2,8 @@
   "config": {
     "step": {
       "user": {
-        "title": "digitalSTROM Connection",
-        "description": "Choose how to connect to your digitalSTROM Server (dSS).",
+        "title": "Digital Strom Connection",
+        "description": "Choose how to connect to your Digital Strom Server (dSS).",
         "data": {
           "connection_type": "Connection type"
         }
@@ -18,11 +18,11 @@
       },
       "approve_token": {
         "title": "Approve Application",
-        "description": "Press the button on your digitalSTROM meter to authorize Home Assistant.\n\nToken: {token}\n\nClick Submit after pressing the button."
+        "description": "Approve the WoonIoT connection in your Digital Strom Configurator:\n\n1. Open the dSS admin interface in your browser\n2. Go to System > Access Authorization\n3. Find 'WoonIoT HA Connect' and check the box to approve\n\nToken: {token}\n\nClick Submit after approving."
       },
       "cloud": {
         "title": "Cloud Connection",
-        "description": "Enter your digitalSTROM cloud URL and credentials.",
+        "description": "Enter your Digital Strom cloud URL and credentials.",
         "data": {
           "cloud_url": "Cloud URL",
           "cloud_user": "Username",
@@ -36,20 +36,24 @@
     "error": {
       "cannot_connect": "Cannot connect to dSS. Check IP/URL and ensure the server is reachable.",
       "invalid_auth": "Invalid credentials.",
-      "token_not_approved": "Token not yet approved. Press the meter button and try again."
+      "token_not_approved": "Token not yet approved. Approve the connection in dSS admin under Access Authorization."
     },
     "abort": {
       "cannot_connect": "Could not connect to dSS after authentication.",
-      "already_configured": "This digitalSTROM server is already configured."
+      "already_configured": "This Digital Strom server is already configured."
     }
   },
   "options": {
     "step": {
       "init": {
-        "title": "digitalSTROM Zones",
+        "title": "Digital Strom Zones",
         "description": "Select which zones to include in Home Assistant.",
         "data": {
-          "enabled_zones": "Enabled zones"
+          "enabled_zones": "Enabled zones",
+          "invert_cover_position": "Invert cover direction"
+        },
+        "data_description": {
+          "invert_cover_position": "Enable this if your blinds/screens move in the wrong direction (open/close reversed)"
         }
       }
     }

@@ -18,7 +18,15 @@ from .const import (
     RECONNECT_MAX,
     GROUP_LIGHT,
     GROUP_SHADE,
+    GROUP_HEATING,
     SCENE_OFF,
+    SCENE_1,
+    SCENE_2,
+    SCENE_3,
+    SCENE_4,
+    NAMED_SCENES,
+    NAMED_SCENES_SHADE,
+    GROUP_HEATING_SCENES,
     INTEGRATION_VERSION,
     TELEMETRY_URL,
 )
@@ -55,6 +63,10 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
         self._parse_structure(structure)
         self._telemetry_sent = False
 
+        # Scene names from dS (populated async via fetch_scene_names)
+        # Key: (zone_id, group, scene_nr) -> str
+        self.scene_names: dict[tuple[int, int, int], str] = {}
+
     def _parse_structure(self, structure: dict) -> None:
         """Parse apartment structure into zone dict."""
         apartment = structure.get("apartment", structure)
@@ -87,6 +99,34 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
                 "groups": groups,
                 "device_count": len(devices),
             }
+
+    async def fetch_scene_names(self) -> None:
+        """Fetch user-defined scene names from dSS for all zones/groups."""
+        scene_numbers = [SCENE_OFF, SCENE_1, SCENE_2, SCENE_3, SCENE_4]
+        for zone_id, zone_info in self.zones.items():
+            for group in zone_info["groups"]:
+                if group not in (GROUP_LIGHT, GROUP_SHADE, GROUP_HEATING):
+                    continue
+                for scene_nr in scene_numbers:
+                    try:
+                        name = await self.api.get_scene_name(zone_id, group, scene_nr)
+                        if name:
+                            self.scene_names[(zone_id, group, scene_nr)] = name
+                    except Exception:
+                        pass
+
+    def get_scene_display_name(self, zone_id: int, group: int, scene_nr: int) -> str:
+        """Get display name for a scene: dS custom name, or fallback to default."""
+        # First check dS custom name
+        custom = self.scene_names.get((zone_id, group, scene_nr))
+        if custom:
+            return custom
+        # Fallback to group-specific defaults
+        if group == GROUP_SHADE:
+            return NAMED_SCENES_SHADE.get(scene_nr, f"Scene {scene_nr}")
+        if group == GROUP_HEATING:
+            return GROUP_HEATING_SCENES.get(scene_nr, f"Scene {scene_nr}")
+        return NAMED_SCENES.get(scene_nr, f"Scene {scene_nr}")
 
     @property
     def is_paused(self) -> bool:

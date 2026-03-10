@@ -69,6 +69,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # Initial data fetch
     await coordinator.async_config_entry_first_refresh()
 
+    # Fetch scene names from dSS (user-defined names like "Dag", "Avond" etc.)
+    await coordinator.fetch_scene_names()
+
     # Start event listener (don't await - it long-polls and would block startup)
     hass.async_create_task(coordinator.start_event_listener())
 

@@ -21,6 +21,7 @@ from .const import (
     CONF_CLOUD_PASS,
     CONF_ENABLED_ZONES,
     CONF_DSS_ID,
+    CONF_INVERT_COVER,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -176,11 +177,11 @@ class DigitalStromSmartConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             await self.async_set_unique_id(dss_id)
             self._abort_if_unique_id_configured()
 
-            # Collect zone IDs
+            # Collect zone IDs (skip zone 0 = apartment level, 65534 = unassigned)
             zone_ids = []
             for z in zones:
                 zid = z.get("id", 0)
-                if zid == 0:
+                if zid == 0 or zid >= 65534:
                     continue
                 zone_ids.append(zid)
 
@@ -222,6 +223,7 @@ class DigitalStromOptionsFlow(config_entries.OptionsFlow):
                 zone_options[zone_id] = f"{zone_info['name']} ({zone_info['device_count']} devices)"
 
         current_enabled = self._config_entry.data.get(CONF_ENABLED_ZONES, [])
+        current_invert = self._config_entry.options.get(CONF_INVERT_COVER, False)
 
         schema = vol.Schema(
             {
@@ -232,6 +234,10 @@ class DigitalStromOptionsFlow(config_entries.OptionsFlow):
                     vol.Coerce(list),
                     [vol.In(zone_options)],
                 ),
+                vol.Optional(
+                    CONF_INVERT_COVER,
+                    default=current_invert,
+                ): bool,
             }
         )
 
