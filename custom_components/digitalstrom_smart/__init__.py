@@ -20,16 +20,9 @@ from .const import (
     DOMAIN,
     PLATFORMS_FREE,
     PLATFORMS_PRO,
-    CONN_CLOUD,
-    CONF_CONNECTION_TYPE,
     CONF_APP_TOKEN,
-    CONF_CLOUD_URL,
-    CONF_CLOUD_USER,
-    CONF_CLOUD_PASS,
     CONF_DSS_ID,
     CONF_PRO_LICENSE,
-    GROUP_LIGHT,
-    GROUP_SHADE,
 )
 from .coordinator import DigitalStromCoordinator
 
@@ -40,20 +33,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up digitalSTROM Smart from a config entry."""
     hass.data.setdefault(DOMAIN, {})
 
-    # Create API client
-    if entry.data.get(CONF_CONNECTION_TYPE) == CONN_CLOUD:
-        api = DigitalStromApi(
-            host="",
-            cloud_url=entry.data[CONF_CLOUD_URL],
-            cloud_user=entry.data[CONF_CLOUD_USER],
-            cloud_pass=entry.data[CONF_CLOUD_PASS],
-        )
-    else:
-        api = DigitalStromApi(
-            host=entry.data[CONF_HOST],
-            port=entry.data.get(CONF_PORT, 8080),
-            app_token=entry.data[CONF_APP_TOKEN],
-        )
+    # Create API client (local connection only)
+    api = DigitalStromApi(
+        host=entry.data[CONF_HOST],
+        port=entry.data.get(CONF_PORT, 8080),
+        app_token=entry.data[CONF_APP_TOKEN],
+    )
 
     # Connect
     try:
