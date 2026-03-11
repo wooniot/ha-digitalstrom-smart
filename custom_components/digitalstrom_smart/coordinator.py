@@ -296,7 +296,15 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
     def circuits(self) -> list[dict]:
         return self._circuits
 
+    def has_temp_control(self, zone_id: int) -> bool:
+        """Check if zone has temperature control (group 48) vs dumb heating."""
+        zone = self.zones.get(zone_id)
+        if not zone:
+            return False
+        return GROUP_TEMP_CONTROL in zone["groups"]
+
     def get_temperature(self, zone_id: int) -> float | None:
+        """Get target/nominal temperature for a zone."""
         data = self._temperatures.get(zone_id)
         if data and data.get("NominalValue", 0) > 0:
             return data["NominalValue"]
@@ -305,11 +313,22 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
     def get_current_temperature(self, zone_id: int) -> float | None:
         """Get actual measured temperature for a zone."""
         data = self._temperatures.get(zone_id)
-        if data and data.get("TemperatureValue"):
-            return data["TemperatureValue"]
-        # Fallback to sensor event data
-        if data and data.get("sensorValue"):
-            return data["sensorValue"]
+        if data:
+            # Prefer TemperatureValue from getTemperatureControlValues
+            tv = data.get("TemperatureValue")
+            if tv and tv > 0:
+                return tv
+            # Fallback to sensor event data
+            sv = data.get("sensorValue")
+            if sv and sv > 0:
+                return sv
+        return None
+
+    def get_control_value(self, zone_id: int) -> float | None:
+        """Get heating control output value (0-100%) for a zone."""
+        data = self._temperatures.get(zone_id)
+        if data and "ControlValue" in data:
+            return data["ControlValue"]
         return None
 
     def get_climate_status(self, zone_id: int) -> dict | None:
