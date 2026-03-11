@@ -186,7 +186,11 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
                         name = entry.get("sceneName", "")
                         if nr is not None and name:
                             self.scene_names[(zone_id, group, nr)] = name
-                except DigitalStromApiError:
+                except DigitalStromApiError as err:
+                    _LOGGER.debug(
+                        "getReachableScenes failed for zone %d group %d: %s, trying fallback",
+                        zone_id, group, err,
+                    )
                     # Fallback: try individual sceneGetName calls
                     for scene_nr in [SCENE_OFF, SCENE_1, SCENE_2, SCENE_3, SCENE_4]:
                         try:
@@ -195,6 +199,8 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
                                 self.scene_names[(zone_id, group, scene_nr)] = name
                         except Exception:
                             pass
+                except Exception as err:
+                    _LOGGER.debug("Scene fetch error zone %d group %d: %s", zone_id, group, err)
 
     async def fetch_initial_states(self) -> None:
         """Fetch initial scene states for all zones via getLastCalledScene."""
@@ -207,8 +213,11 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
                     if scene >= 0:
                         is_on = scene != SCENE_OFF
                         self.set_zone_state(zone_id, group, scene=scene, is_on=is_on)
-                except DigitalStromApiError:
-                    pass
+                except Exception as err:
+                    _LOGGER.debug(
+                        "Initial state fetch failed zone %d group %d: %s",
+                        zone_id, group, err,
+                    )
 
     async def fetch_climate_data(self) -> None:
         """Fetch climate control status and config for heating zones. PRO."""
@@ -339,7 +348,7 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
             _LOGGER.error("Failed to subscribe events: %s", err)
             return
 
-        self._event_task = self.hass.async_create_task(
+        self._event_task = self.hass.async_create_background_task(
             self._event_loop(), f"{DOMAIN}_event_loop"
         )
 

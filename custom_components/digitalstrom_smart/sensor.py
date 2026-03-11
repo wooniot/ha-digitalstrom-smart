@@ -12,15 +12,31 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import (
-    UnitOfPower,
-    UnitOfTemperature,
-    PERCENTAGE,
-    UnitOfIlluminance,
-    UnitOfSpeed,
-    UnitOfPressure,
-    CONCENTRATION_PARTS_PER_MILLION,
-)
+from homeassistant.const import UnitOfPower, UnitOfTemperature, PERCENTAGE
+
+# Import units that may have moved between HA versions
+try:
+    from homeassistant.const import UnitOfIlluminance
+except ImportError:
+    class UnitOfIlluminance:
+        LUX = "lx"
+
+try:
+    from homeassistant.const import UnitOfSpeed
+except ImportError:
+    class UnitOfSpeed:
+        METERS_PER_SECOND = "m/s"
+
+try:
+    from homeassistant.const import UnitOfPressure
+except ImportError:
+    class UnitOfPressure:
+        HPA = "hPa"
+
+try:
+    from homeassistant.const import CONCENTRATION_PARTS_PER_MILLION
+except ImportError:
+    CONCENTRATION_PARTS_PER_MILLION = "ppm"
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity

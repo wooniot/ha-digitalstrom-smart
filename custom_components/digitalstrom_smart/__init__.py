@@ -26,6 +26,11 @@ from .const import (
 )
 from .coordinator import DigitalStromCoordinator
 
+# Pre-import all platform modules to avoid blocking imports in event loop (HA 2026+)
+from . import (  # noqa: F401
+    light, cover, sensor, scene, switch, climate, binary_sensor,
+)
+
 _LOGGER = logging.getLogger(__name__)
 
 
@@ -70,18 +75,31 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # Initial data fetch
     await coordinator.async_config_entry_first_refresh()
 
-    # Fetch scene names and initial states from dSS
-    await coordinator.fetch_scene_names()
-    await coordinator.fetch_initial_states()
+    # Fetch scene names and initial states (best-effort, don't block setup)
+    try:
+        await coordinator.fetch_scene_names()
+    except Exception as err:
+        _LOGGER.warning("Scene name fetch failed (non-fatal): %s", err)
+
+    try:
+        await coordinator.fetch_initial_states()
+    except Exception as err:
+        _LOGGER.warning("Initial state fetch failed (non-fatal): %s", err)
 
     # Pro: fetch climate and sensor data
     if coordinator.pro_enabled:
-        await coordinator.fetch_climate_data()
-        await coordinator.fetch_sensor_data()
-        await coordinator.fetch_circuit_data()
+        try:
+            await coordinator.fetch_climate_data()
+            await coordinator.fetch_sensor_data()
+            await coordinator.fetch_circuit_data()
+        except Exception as err:
+            _LOGGER.warning("Pro data fetch failed (non-fatal): %s", err)
 
-    # Start event listener (don't await - it long-polls)
-    hass.async_create_task(coordinator.start_event_listener())
+    # Start event listener as background task (must not block HA bootstrap)
+    entry.async_create_background_task(
+        hass, coordinator.start_event_listener(),
+        f"{DOMAIN}_event_listener",
+    )
 
     # Store
     hass.data[DOMAIN][entry.entry_id] = {
