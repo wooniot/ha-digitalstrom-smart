@@ -504,6 +504,20 @@ class DigitalStromApi:
             {"dsuid": dsuid, "sensorIndex": sensor_index},
         )
 
+    async def device_turn_on(self, dsuid: str) -> None:
+        """Turn on a single device by dSUID."""
+        await self._request(
+            "/json/device/turnOn",
+            {"dsuid": dsuid},
+        )
+
+    async def device_turn_off(self, dsuid: str) -> None:
+        """Turn off a single device by dSUID."""
+        await self._request(
+            "/json/device/turnOff",
+            {"dsuid": dsuid},
+        )
+
     async def blink_device(self, dsuid: str) -> None:
         """Make a device blink for identification.
 

@@ -77,6 +77,9 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
         # Device sensor values: {dsuid: {sensor_type: value}}
         self._device_sensor_values: dict[str, dict[int, float]] = {}
 
+        # Per-device on/off state tracking (for individual Joker switches)
+        self._device_on_states: dict[str, bool] = {}  # dsuid -> is_on
+
         # Metering data (PRO)
         self._circuit_power: dict[str, int] = {}  # dsuid -> watts
         self._circuits: list[dict] = []
@@ -168,6 +171,10 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
                     })
                 self.devices[dsuid] = dev_info
                 self.zones[zone_id]["devices"].append(dsuid)
+
+                # Initialize device on/off state from structure
+                if GROUP_JOKER in dev_info["groups"]:
+                    self._device_on_states[dsuid] = dev_info["is_on"]
 
     # =====================================================================
     # Scene discovery
@@ -427,6 +434,24 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
             self._zone_states[key] = {"scene": None, "value": None}
         self._zone_states[key].update(kwargs)
 
+    def get_device_on_state(self, dsuid: str) -> bool | None:
+        """Get individual device on/off state."""
+        return self._device_on_states.get(dsuid)
+
+    def set_device_on_state(self, dsuid: str, is_on: bool) -> None:
+        """Set individual device on/off state."""
+        self._device_on_states[dsuid] = is_on
+
+    def get_joker_devices_in_zone(self, zone_id: int) -> list[dict]:
+        """Get all Joker (group 8) devices in a zone."""
+        zone_info = self.zones.get(zone_id, {})
+        result = []
+        for dsuid in zone_info.get("devices", []):
+            dev = self.devices.get(dsuid)
+            if dev and GROUP_JOKER in dev.get("groups", []):
+                result.append(dev)
+        return result
+
     # =====================================================================
     # Event listener
     # =====================================================================
@@ -490,6 +515,12 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
             if zone_id and scene >= 0:
                 is_on = scene != SCENE_OFF if name == "callScene" else True
                 self.set_zone_state(zone_id, group, scene=scene, is_on=is_on)
+
+                # Update individual device states for Joker group scenes
+                if group == GROUP_JOKER:
+                    for dev in self.get_joker_devices_in_zone(zone_id):
+                        self.set_device_on_state(dev["dsuid"], is_on)
+
                 _LOGGER.debug(
                     "Event %s: zone=%d group=%d scene=%d",
                     name, zone_id, group, scene,
