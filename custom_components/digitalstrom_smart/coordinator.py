@@ -297,11 +297,24 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
         return self._circuits
 
     def has_temp_control(self, zone_id: int) -> bool:
-        """Check if zone has temperature control (group 48) vs dumb heating."""
-        zone = self.zones.get(zone_id)
-        if not zone:
+        """Check if zone has temperature control vs dumb heating.
+
+        Detection: if getTemperatureControlValues returns TemperatureValue
+        for this zone, it has active temperature control. Group 48 is a
+        virtual group that may not appear in device groups.
+        """
+        data = self._temperatures.get(zone_id)
+        if not data:
             return False
-        return GROUP_TEMP_CONTROL in zone["groups"]
+        # Zone has temp control if it reports a measured temperature value
+        tv = data.get("TemperatureValue")
+        if tv is not None and tv > 0:
+            return True
+        # Also check if NominalValue is set (target temp configured)
+        nv = data.get("NominalValue")
+        if nv is not None and nv > 0:
+            return True
+        return False
 
     def get_temperature(self, zone_id: int) -> float | None:
         """Get target/nominal temperature for a zone."""
