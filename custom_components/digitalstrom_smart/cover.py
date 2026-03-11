@@ -113,9 +113,7 @@ class DigitalStromCover(CoordinatorEntity, CoverEntity):
             ha_position = 100 - ha_position
         return round(ha_position * 255 / 100)
 
-    @property
-    def available(self) -> bool:
-        return not self.coordinator.is_paused and super().available
+    # Available is handled by CoordinatorEntity base class
 
     @property
     def current_cover_position(self) -> int | None:

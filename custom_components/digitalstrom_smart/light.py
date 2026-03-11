@@ -73,10 +73,6 @@ class DigitalStromLight(CoordinatorEntity, LightEntity):
         }
 
     @property
-    def available(self) -> bool:
-        return not self.coordinator.is_paused and super().available
-
-    @property
     def is_on(self) -> bool | None:
         state = self.coordinator.get_zone_state(self._zone_id, GROUP_LIGHT)
         return state.get("is_on")
