@@ -86,6 +86,7 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
         self.devices: dict[str, dict] = {}  # dsuid -> device info
         self._parse_structure(structure)
         self._telemetry_sent = False
+        self._telemetry_last: float = 0  # timestamp of last successful ping
 
         # Scene discovery data
         # Key: (zone_id, group, scene_nr) -> str (user-defined name)
@@ -563,9 +564,12 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
         except DigitalStromApiError as err:
             raise UpdateFailed(f"Poll failed: {err}") from err
 
-        # Send anonymous telemetry ping (once per startup)
-        if not self._telemetry_sent:
+        # Send anonymous telemetry ping (at startup + every 24h)
+        import time as _time
+        now = _time.time()
+        if not self._telemetry_sent or (now - self._telemetry_last > 86400):
             self._telemetry_sent = True
+            self._telemetry_last = now
             self.hass.async_create_task(self._send_telemetry())
 
         return {
@@ -574,23 +578,39 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
         }
 
     async def _send_telemetry(self) -> None:
-        """Send anonymous ping to WoonIoT (once per startup, best-effort)."""
-        try:
-            async with aiohttp.ClientSession() as session:
-                await session.post(
-                    TELEMETRY_URL,
-                    json={
-                        "v": INTEGRATION_VERSION,
-                        "zones": len(self.zones),
-                        "devices": len(self.devices),
-                        "dss_id": self.dss_id[:8] if self.dss_id else "",
-                        "ha": self.hass.config.version,
-                        "pro": self.pro_enabled,
-                    },
-                    timeout=aiohttp.ClientTimeout(total=5),
-                )
-        except Exception:
-            pass  # Telemetry is best-effort, never fail
+        """Send anonymous ping to WoonIoT (best-effort, retry on fail)."""
+        import ssl as _ssl
+        payload = {
+            "v": INTEGRATION_VERSION,
+            "zones": len(self.zones),
+            "devices": len(self.devices),
+            "dss_id": self.dss_id[:8] if self.dss_id else "",
+            "ha": self.hass.config.version,
+            "pro": self.pro_enabled,
+        }
+        # Try up to 3 times with increasing delay
+        for attempt in range(3):
+            try:
+                # Use permissive SSL (some HA installs have cert issues)
+                ssl_ctx = _ssl.create_default_context()
+                ssl_ctx.check_hostname = False
+                ssl_ctx.verify_mode = _ssl.CERT_NONE
+                conn = aiohttp.TCPConnector(ssl=ssl_ctx)
+                async with aiohttp.ClientSession(connector=conn) as session:
+                    async with session.post(
+                        TELEMETRY_URL,
+                        json=payload,
+                        timeout=aiohttp.ClientTimeout(total=10),
+                    ) as resp:
+                        if resp.status == 200:
+                            _LOGGER.debug("Telemetry ping sent successfully")
+                            return
+                        _LOGGER.debug("Telemetry ping HTTP %d", resp.status)
+            except Exception as err:
+                _LOGGER.debug("Telemetry ping attempt %d failed: %s", attempt + 1, err)
+            # Wait before retry (30s, 60s)
+            if attempt < 2:
+                await asyncio.sleep(30 * (attempt + 1))
 
     async def shutdown(self) -> None:
         """Clean shutdown."""
