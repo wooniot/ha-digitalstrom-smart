@@ -165,6 +165,13 @@ Home Assistant
 
 ## Änderungsprotokoll
 
+### v2.2.8 (12.03.2026)
+- Geräte-Sensor-Skalierung behoben: intelligente Erkennung von Roh-Integer vs. Float-Werten aus der dSS-API
+- EnOcean-Sensoren (Thermokon) liefern korrekte Floats, dS-Bus-Sensoren (FTW04, TNY210) liefern Roh-Integer — beide werden jetzt korrekt verarbeitet
+- FTW04 Temperatur-/Feuchtigkeitssensoren zeigen jetzt korrekte Werte
+- Ulux/TNY210 CO2-, Helligkeits-, Temperatur- und Feuchtigkeitssensoren unterstützt
+- Verbesserte Startup-Protokollierung für Geräte-Sensor-Erkennung
+
 ### v2.2.5 (12.03.2026)
 - Joker-Aktoren (outputMode > 0) erstellen jetzt **Switch**-Entitäten
 - Joker-Sensoren (outputMode == 0) erstellen jetzt **Binary Sensor**-Entitäten mit automatischer Geräteklassenerkennung (Tür, Fenster, Rauch, Bewegung usw.)

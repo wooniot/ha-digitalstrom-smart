@@ -165,6 +165,13 @@ Home Assistant
 
 ## Changelog
 
+### v2.2.8 (2026-03-12)
+- Fix device sensor scaling: smart detection of raw integer vs float values from dSS API
+- EnOcean sensors (Thermokon) return proper floats, dS-bus sensors (FTW04, TNY210) return raw integers — both now handled correctly
+- FTW04 temperature/humidity sensors now display correct values
+- Ulux/TNY210 CO2, brightness, temperature, humidity sensors supported
+- Improved startup logging for device sensor discovery
+
 ### v2.2.5 (2026-03-12)
 - Joker actuators (outputMode > 0) now create **switch** entities
 - Joker sensors (outputMode == 0) now create **binary_sensor** entities with auto-detected device class (door, window, smoke, motion, etc.)
