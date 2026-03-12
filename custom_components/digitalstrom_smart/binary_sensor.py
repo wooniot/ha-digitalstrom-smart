@@ -33,7 +33,7 @@ BINARY_INPUT_DEVICE_CLASS = {
     8: BinarySensorDeviceClass.WINDOW,        # Wind strength above limit
     9: BinarySensorDeviceClass.MOISTURE,      # Rain
     10: BinarySensorDeviceClass.HEAT,         # Solar radiation
-    11: BinarySensorDeviceClass.TEMPERATURE,  # Temperature below limit
+    11: BinarySensorDeviceClass.PROBLEM,      # Temperature below limit
     12: BinarySensorDeviceClass.BATTERY,      # Battery status
     13: BinarySensorDeviceClass.WINDOW,       # Window contact
     14: BinarySensorDeviceClass.DOOR,         # Door contact
