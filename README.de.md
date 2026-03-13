@@ -165,6 +165,12 @@ Home Assistant
 
 ## Änderungsprotokoll
 
+### v2.3.1 (13.03.2026)
+- Vorskalierte Sensorwerte aus dSS-Strukturdaten verwenden statt roher getSensorValue API-Aufrufe
+- Der dSS übernimmt alle Bus-Encoding-Konvertierungen — keine manuelle Skalierung nötig
+- Entfernt fragile gerätespezifische Skalierungslogik (raw/40, raw/100 usw.)
+- Sensorwerte stimmen jetzt immer mit dem überein, was der dSS meldet
+
 ### v2.3.0 (12.03.2026)
 - dS-Bus Sensor-Skalierung korrigiert: offizielle dS-Bus 12-Bit-Kodierung pro Sensortyp
 - Temperatur: `raw / 40 - 43.2`, Luftfeuchtigkeit: `raw / 40` (nicht raw/100)

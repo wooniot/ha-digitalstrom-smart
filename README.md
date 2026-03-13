@@ -165,6 +165,12 @@ Home Assistant
 
 ## Changelog
 
+### v2.3.1 (2026-03-13)
+- Use pre-scaled sensor values from dSS structure data instead of raw getSensorValue API calls
+- The dSS already handles all bus-encoding conversions — no manual scaling needed
+- Removes fragile device-specific scaling logic (raw/40, raw/100, etc.)
+- Sensor values now always match what the dSS reports, regardless of device type
+
 ### v2.3.0 (2026-03-12)
 - Fix dS-bus sensor scaling: use official dS bus 12-bit encoding per sensor type
 - Temperature: `raw / 40 - 43.2`, Humidity: `raw / 40` (not raw/100)

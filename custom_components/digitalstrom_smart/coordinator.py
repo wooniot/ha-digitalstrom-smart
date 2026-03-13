@@ -173,6 +173,20 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
                 self.devices[dsuid] = dev_info
                 self.zones[zone_id]["devices"].append(dsuid)
 
+                # Use pre-scaled sensor values from structure as initial values
+                for sensor in dev_info["sensors"]:
+                    stype = sensor.get("type", -1)
+                    val = sensor.get("value")
+                    if val is not None and stype >= 0:
+                        try:
+                            fval = float(val)
+                            if fval != 0:  # skip uninitialized sensors
+                                if dsuid not in self._device_sensor_values:
+                                    self._device_sensor_values[dsuid] = {}
+                                self._device_sensor_values[dsuid][stype] = round(fval, 2)
+                        except (ValueError, TypeError):
+                            pass
+
                 # Initialize device on/off state from structure (actuators + sensors)
                 if GROUP_JOKER in dev_info["groups"]:
                     self._device_on_states[dsuid] = dev_info["is_on"]
@@ -291,70 +305,29 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
         except DigitalStromApiError:
             pass
 
-    @staticmethod
-    def _scale_ds_bus_sensor(raw: float, sensor_type: int) -> float:
-        """Scale raw dS-bus 12-bit sensor values to physical units.
-
-        dS-bus devices return raw encoded integers via getSensorValue.
-        The encoding is type-specific per the dS bus protocol.
-        Events use sensorValueFloat which is already scaled by the dSS.
-        """
-        if sensor_type == SENSOR_TEMPERATURE:
-            return raw / 40.0 - 43.2
-        elif sensor_type == SENSOR_HUMIDITY:
-            return raw / 40.0
-        elif sensor_type == SENSOR_BRIGHTNESS:
-            return raw / 100.0
-        elif sensor_type == SENSOR_CO2:
-            return raw / 100.0
-        else:
-            return raw / 100.0
-
     async def fetch_device_sensors(self) -> None:
-        """Fetch sensor values from devices that have sensors (Ulux, etc.).
+        """Log device sensor values loaded from structure.
 
-        Only fetches for devices with relevant sensor types (temp, CO2, brightness, humidity).
-        Called once at startup and then relies on deviceSensorValue events.
+        Sensor values are pre-scaled by the dSS and loaded from the
+        apartment/getStructure response during _parse_structure().
+        After startup, real-time updates come via deviceSensorValue events
+        (using sensorValueFloat, which is also pre-scaled by the dSS).
 
-        dS-bus devices return raw 12-bit encoded values that need type-specific
-        scaling. EnOcean/external devices return proper floats.
-        Events use sensorValueFloat which is already scaled.
+        No getSensorValue API calls needed — the dSS handles all
+        bus-encoding conversions internally.
         """
-        relevant_types = {SENSOR_TEMPERATURE, SENSOR_HUMIDITY, SENSOR_BRIGHTNESS, SENSOR_CO2}
-        found_count = 0
-        for dsuid, dev in self.devices.items():
-            for sensor in dev.get("sensors", []):
-                stype = sensor.get("type", -1)
-                if stype not in relevant_types:
-                    continue
-                try:
-                    result = await self.api.get_device_sensor_value(dsuid, sensor["index"])
-                    value = result.get("value")
-                    if value is not None:
-                        raw = float(value)
-                        # dS-bus devices (dSUID prefix 302ed89f43f0) return raw
-                        # encoded integers that need type-specific scaling.
-                        # External devices (EnOcean, etc.) return proper floats.
-                        is_ds_bus = dsuid.startswith("302ed89f43f0")
-                        if is_ds_bus and raw > 100:
-                            scaled = self._scale_ds_bus_sensor(raw, stype)
-                        else:
-                            scaled = raw
-                        if dsuid not in self._device_sensor_values:
-                            self._device_sensor_values[dsuid] = {}
-                        self._device_sensor_values[dsuid][stype] = round(scaled, 2)
-                        sensor["value"] = round(scaled, 2)
-                        found_count += 1
-                        _LOGGER.debug(
-                            "Device sensor %s type=%d idx=%d: raw=%.1f val=%.2f ds_bus=%s (%s)",
-                            dsuid[:16], stype, sensor["index"], raw, round(scaled, 2),
-                            is_ds_bus, dev.get("name", "?"),
-                        )
-                except DigitalStromApiError:
-                    _LOGGER.debug("Failed to fetch sensor %d from device %s", sensor["index"], dsuid[:8])
-                except Exception:
-                    pass
-        _LOGGER.info("Fetched %d device sensor values", found_count)
+        count = sum(len(v) for v in self._device_sensor_values.values())
+        _LOGGER.info(
+            "Device sensors from structure: %d values across %d devices",
+            count, len(self._device_sensor_values),
+        )
+        for dsuid, values in self._device_sensor_values.items():
+            dev = self.devices.get(dsuid, {})
+            for stype, val in values.items():
+                _LOGGER.debug(
+                    "Device sensor %s type=%d val=%.2f (%s)",
+                    dsuid[:16], stype, val, dev.get("name", "?"),
+                )
 
     def get_scene_display_name(self, zone_id: int, group: int, scene_nr: int) -> str:
         """Get display name: dS custom name or group-specific default."""
