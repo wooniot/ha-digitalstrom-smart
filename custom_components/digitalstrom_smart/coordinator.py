@@ -6,6 +6,7 @@ scene discovery, sensor data, and state tracking.
 
 import asyncio
 import logging
+import time as _time
 from datetime import timedelta
 from typing import Any
 
@@ -173,20 +174,6 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
                 self.devices[dsuid] = dev_info
                 self.zones[zone_id]["devices"].append(dsuid)
 
-                # Use pre-scaled sensor values from structure as initial values
-                for sensor in dev_info["sensors"]:
-                    stype = sensor.get("type", -1)
-                    val = sensor.get("value")
-                    if val is not None and stype >= 0:
-                        try:
-                            fval = float(val)
-                            if fval != 0:  # skip uninitialized sensors
-                                if dsuid not in self._device_sensor_values:
-                                    self._device_sensor_values[dsuid] = {}
-                                self._device_sensor_values[dsuid][stype] = round(fval, 2)
-                        except (ValueError, TypeError):
-                            pass
-
                 # Initialize device on/off state from structure (actuators + sensors)
                 if GROUP_JOKER in dev_info["groups"]:
                     self._device_on_states[dsuid] = dev_info["is_on"]
@@ -306,17 +293,13 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
             pass
 
     async def fetch_device_sensors(self) -> None:
-        """Fetch initial device sensor values from zone API.
+        """Fetch initial device sensor values via zone/getSensorValues.
 
-        The dSS getStructure often returns value=0.0/valid=False for
-        climate sensors. Instead, use zone/getSensorValues which returns
-        pre-scaled correct values. Map these back to the devices in each zone.
-
+        The dSS pre-scales all values — no manual bus-encoding needed.
         After startup, real-time updates come via deviceSensorValue events
-        (using sensorValueFloat, also pre-scaled by the dSS).
+        (sensorValueFloat, also pre-scaled).
         """
-        # Map zone sensor value keys to our sensor type constants
-        zone_value_map = {
+        _ZONE_KEY_MAP = {
             "TemperatureValue": SENSOR_TEMPERATURE,
             "HumidityValue": SENSOR_HUMIDITY,
             "CO2concentrationValue": SENSOR_CO2,
@@ -327,32 +310,30 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
         for zone_id, zone_info in self.zones.items():
             try:
                 data = await self.api.get_zone_sensor_values(zone_id)
-                values = data.get("values", [])
-                for entry in values:
-                    for key, stype in zone_value_map.items():
-                        if key in entry:
-                            val = round(float(entry[key]), 2)
-                            # Find device(s) in this zone with this sensor type
-                            for dsuid in zone_info.get("devices", []):
-                                dev = self.devices.get(dsuid, {})
-                                for sensor in dev.get("sensors", []):
-                                    if sensor.get("type") == stype:
-                                        if dsuid not in self._device_sensor_values:
-                                            self._device_sensor_values[dsuid] = {}
-                                        self._device_sensor_values[dsuid][stype] = val
-                                        sensor["value"] = val
-                                        found_count += 1
-                                        _LOGGER.debug(
-                                            "Zone %d sensor %s=%s → device %s (%s)",
-                                            zone_id, key, val,
-                                            dsuid[:16], dev.get("name", "?"),
-                                        )
-                                        break  # one device per type per zone
-            except DigitalStromApiError:
-                _LOGGER.debug("Failed to fetch zone sensor values for zone %d", zone_id)
-            except Exception:
-                pass
-        _LOGGER.info("Fetched %d device sensor values from zone API", found_count)
+            except (DigitalStromApiError, Exception):
+                continue
+
+            for entry in data.get("values", []):
+                for key, stype in _ZONE_KEY_MAP.items():
+                    if key not in entry:
+                        continue
+                    val = round(float(entry[key]), 2)
+                    # Find first device in this zone with matching sensor type
+                    dsuid = self._find_device_with_sensor(zone_info, stype)
+                    if dsuid:
+                        self._device_sensor_values.setdefault(dsuid, {})[stype] = val
+                        found_count += 1
+
+        _LOGGER.info("Loaded %d sensor values from zone API", found_count)
+
+    def _find_device_with_sensor(self, zone_info: dict, sensor_type: int) -> str | None:
+        """Find the first device in a zone that has a given sensor type."""
+        for dsuid in zone_info.get("devices", []):
+            dev = self.devices.get(dsuid, {})
+            for sensor in dev.get("sensors", []):
+                if sensor.get("type") == sensor_type:
+                    return dsuid
+        return None
 
     def get_scene_display_name(self, zone_id: int, group: int, scene_nr: int) -> str:
         """Get display name: dS custom name or group-specific default."""
@@ -662,7 +643,6 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
             raise UpdateFailed(f"Poll failed: {err}") from err
 
         # Send anonymous telemetry ping (at startup + every 24h)
-        import time as _time
         now = _time.time()
         if not self._telemetry_sent or (now - self._telemetry_last > 86400):
             self._telemetry_sent = True
