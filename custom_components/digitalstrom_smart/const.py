@@ -7,7 +7,7 @@ DOMAIN = "digitalstrom_smart"
 MANUFACTURER = "Digital Strom"
 INTEGRATION_AUTHOR = "Woon IoT BV"
 INTEGRATION_URL = "https://github.com/wooniot/ha-digitalstrom-smart"
-INTEGRATION_VERSION = "2.5.1"
+INTEGRATION_VERSION = "2.5.2"
 
 # Application name shown in dSS Configurator under registered applications
 DSS_APP_NAME = "WoonIoT HA Connect"
@@ -71,6 +71,7 @@ SCENE_DEEP_OFF = 68      # Diep uit
 
 # Apartment-wide scenes: Alarm & Safety
 SCENE_PANIC = 65         # Paniek
+SCENE_DOOR_BELL = 73     # Deurbel
 SCENE_ALARM_1 = 74       # Alarm 1
 SCENE_ALARM_2 = 75       # Alarm 2
 SCENE_ALARM_3 = 76       # Alarm 3 (Brand)
@@ -102,6 +103,7 @@ APARTMENT_ALARM_SCENES = {
     SCENE_ALARM_3: "Alarm 3",
     SCENE_ALARM_4: "Alarm 4",
     SCENE_PANIC: "Panic",
+    SCENE_DOOR_BELL: "Doorbell",
 }
 
 # All alarm scene numbers (for detection in events)

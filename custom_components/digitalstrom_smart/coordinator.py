@@ -698,7 +698,7 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
             temp_data = await self.api.get_temperature_values()
             for zone_data in temp_data:
                 zone_id = zone_data.get("id")
-                if zone_id:
+                if zone_id is not None and zone_id > 0:
                     # Merge with existing data (preserve sensorValue from events)
                     existing = self._temperatures.get(zone_id, {})
                     existing.update(zone_data)
