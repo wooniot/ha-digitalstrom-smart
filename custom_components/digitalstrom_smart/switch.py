@@ -1,5 +1,6 @@
 """Switch entities for Digital Strom - individual Joker (black) device control."""
 
+import asyncio
 import logging
 
 from homeassistant.components.switch import SwitchEntity
@@ -9,7 +10,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .api import DigitalStromApiError
-from .const import DOMAIN, MANUFACTURER, GROUP_JOKER, CONF_ENABLED_ZONES, APARTMENT_ALARM_SCENES
+from .const import DOMAIN, MANUFACTURER, GROUP_JOKER, CONF_ENABLED_ZONES, APARTMENT_ALARM_SCENES, SCENE_DOOR_BELL
 from .coordinator import DigitalStromCoordinator
 
 _LOGGER = logging.getLogger(__name__)
@@ -89,6 +90,11 @@ class DigitalStromAlarmSwitch(CoordinatorEntity, SwitchEntity):
         await self.coordinator.call_apartment_scene(self._scene_nr)
         self.coordinator.apartment_alarms.add(self._scene_nr)
         self.async_write_ha_state()
+        # Doorbell is a pulse — auto-reset after 3 seconds
+        if self._scene_nr == SCENE_DOOR_BELL:
+            await asyncio.sleep(3)
+            self.coordinator.apartment_alarms.discard(self._scene_nr)
+            self.async_write_ha_state()
 
     async def async_turn_off(self, **kwargs) -> None:
         await self.coordinator.undo_apartment_scene(self._scene_nr)
