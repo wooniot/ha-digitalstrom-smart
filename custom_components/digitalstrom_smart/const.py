@@ -1,11 +1,13 @@
 """Constants for Digital Strom Smart integration by Woon IoT BV.
 
 The definitive Digital Strom integration for Home Assistant.
+Created by Marijn Nederlof — Heerjansdam, NL.
 """
 
 DOMAIN = "digitalstrom_smart"
 MANUFACTURER = "Digital Strom"
 INTEGRATION_AUTHOR = "Woon IoT BV"
+INTEGRATION_AUTHOR_ID = "MN-HJD-2026"
 INTEGRATION_URL = "https://github.com/wooniot/ha-digitalstrom-smart"
 INTEGRATION_VERSION = "2.6.0"
 
