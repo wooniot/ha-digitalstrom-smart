@@ -9,7 +9,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .api import DigitalStromApiError
-from .const import DOMAIN, MANUFACTURER, GROUP_JOKER, CONF_ENABLED_ZONES
+from .const import DOMAIN, MANUFACTURER, GROUP_JOKER, CONF_ENABLED_ZONES, APARTMENT_ALARM_SCENES
 from .coordinator import DigitalStromCoordinator
 
 _LOGGER = logging.getLogger(__name__)
@@ -41,7 +41,62 @@ async def async_setup_entry(
                 DigitalStromJokerSwitch(coordinator, zone_id, zone_info, dev)
             )
 
+    # --- PRO: Apartment alarm switches ---
+    if coordinator.pro_enabled:
+        for scene_nr, name in APARTMENT_ALARM_SCENES.items():
+            entities.append(
+                DigitalStromAlarmSwitch(coordinator, scene_nr, name)
+            )
+
     async_add_entities(entities)
+
+
+class DigitalStromAlarmSwitch(CoordinatorEntity, SwitchEntity):
+    """Apartment alarm switch: Alarm 1-4, Panic. PRO."""
+
+    _attr_has_entity_name = True
+
+    _ICONS = {
+        "Alarm 1": "mdi:alarm-light",
+        "Alarm 2": "mdi:alarm-light-outline",
+        "Alarm 3": "mdi:fire",
+        "Alarm 4": "mdi:alert",
+        "Panic": "mdi:alert-octagon",
+    }
+
+    def __init__(
+        self, coordinator: DigitalStromCoordinator, scene_nr: int, name: str,
+    ) -> None:
+        super().__init__(coordinator)
+        self._scene_nr = scene_nr
+        dss_id = coordinator.dss_id
+        self._attr_unique_id = f"ds_{dss_id}_apartment_alarm_{scene_nr}"
+        self._attr_name = name
+        self._attr_icon = self._ICONS.get(name, "mdi:alarm-light")
+        self._attr_device_info = {
+            "identifiers": {(DOMAIN, f"{dss_id}_apartment")},
+            "name": "Digital Strom Server",
+            "manufacturer": MANUFACTURER,
+            "model": "dSS",
+        }
+
+    @property
+    def is_on(self) -> bool:
+        return self.coordinator.is_alarm_active(self._scene_nr)
+
+    async def async_turn_on(self, **kwargs) -> None:
+        await self.coordinator.call_apartment_scene(self._scene_nr)
+        self.coordinator.apartment_alarms.add(self._scene_nr)
+        self.async_write_ha_state()
+
+    async def async_turn_off(self, **kwargs) -> None:
+        await self.coordinator.undo_apartment_scene(self._scene_nr)
+        self.coordinator.apartment_alarms.discard(self._scene_nr)
+        self.async_write_ha_state()
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        self.async_write_ha_state()
 
 
 class DigitalStromJokerSwitch(CoordinatorEntity, SwitchEntity):
