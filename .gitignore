@@ -2,5 +2,13 @@ __pycache__/
 *.py[cod]
 *.egg-info/
 .env
+.env.*
 .vscode/
 .idea/
+
+# Security — nooit committen
+*.key
+*.pem
+*.credential*
+.ssh/
+.git-credentials
