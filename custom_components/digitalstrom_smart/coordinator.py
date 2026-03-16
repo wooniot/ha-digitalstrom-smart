@@ -134,10 +134,11 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
                     elif isinstance(group_entry, dict):
                         groups.add(group_entry.get("id", 0))
 
-            # Also check zone groups directly
+            # Also check zone groups directly (include even without devices,
+            # as climate control can be configured at zone level)
             for zg in zone.get("groups", []):
                 gid = zg.get("group", zg.get("id", 0))
-                if gid and zg.get("devices", []):
+                if gid:
                     groups.add(gid)
 
             self.zones[zone_id] = {
@@ -249,22 +250,27 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
                     )
 
     async def fetch_climate_data(self) -> None:
-        """Fetch climate control status and config for heating zones. PRO."""
+        """Fetch climate control status and config for zones. PRO.
+
+        Tries all zones — not just those with GROUP_HEATING/GROUP_TEMP_CONTROL,
+        because some setups (PLAN44, EnOcean, external actuators) have climate
+        control configured at the zone level without heating-group devices.
+        """
         if not self.pro_enabled:
             return
         for zone_id, zone_info in self.zones.items():
-            if GROUP_HEATING not in zone_info["groups"] and GROUP_TEMP_CONTROL not in zone_info["groups"]:
-                continue
-            # Always fetch config first (needed by has_temp_control detection)
+            # Always try to fetch config (it's a cheap call that returns quickly
+            # for zones without climate control)
             if zone_id not in self._climate_config:
                 try:
                     config = await self.api.get_temperature_control_config(zone_id)
-                    self._climate_config[zone_id] = config
-                    _LOGGER.debug(
-                        "Zone %d (%s) climate config: ControlMode=%s",
-                        zone_id, zone_info["name"],
-                        config.get("ControlMode", "?"),
-                    )
+                    control_mode = config.get("ControlMode", 0)
+                    if control_mode > 0:
+                        self._climate_config[zone_id] = config
+                        _LOGGER.debug(
+                            "Zone %d (%s) climate config: ControlMode=%s",
+                            zone_id, zone_info["name"], control_mode,
+                        )
                 except DigitalStromApiError:
                     pass
             # Only fetch status if zone has confirmed temp control
