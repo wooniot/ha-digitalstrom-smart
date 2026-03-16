@@ -611,7 +611,19 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
     def _process_event(self, event: dict) -> None:
         """Process a single dSS event and update state."""
         name = event.get("name", "")
-        props = event.get("properties", {})
+        raw_props = event.get("properties", {})
+
+        # dSS may return properties as list of {name, value} or as dict
+        if isinstance(raw_props, list):
+            props = {p["name"]: p["value"] for p in raw_props if "name" in p}
+        else:
+            props = raw_props
+
+        if name == "stateChange":
+            _LOGGER.debug(
+                "Raw stateChange event: raw_props_type=%s props=%s",
+                type(raw_props).__name__, props,
+            )
 
         if name in ("callScene", "undoScene"):
             zone_id = int(props.get("zoneID", 0))
