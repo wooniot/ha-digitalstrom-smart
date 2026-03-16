@@ -690,7 +690,20 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
             dsuid = props.get("dsuid", "")
             state_name = props.get("statename", "")
             state_value = props.get("state", "")
-            if dsuid and dsuid in self.devices:
+
+            # Apartment-level state changes (rain, etc.) — no dsuid
+            if state_name == "rain":
+                is_active = state_value in ("active", "true", "1")
+                if is_active:
+                    self._apartment_alarms.add(SCENE_RAIN)
+                else:
+                    self._apartment_alarms.discard(SCENE_RAIN)
+                _LOGGER.debug(
+                    "Apartment state change: %s=%s (alarms=%s)",
+                    state_name, state_value, self._apartment_alarms,
+                )
+                self.async_update_listeners()
+            elif dsuid and dsuid in self.devices:
                 # Binary input state changes (contacts, smoke, etc.)
                 is_active = state_value in ("active", "true", "1", "open")
                 self.set_device_on_state(dsuid, is_active)

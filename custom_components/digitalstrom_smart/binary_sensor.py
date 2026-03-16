@@ -148,7 +148,6 @@ class DigitalStromWeatherProtectionSensor(CoordinatorEntity, BinarySensorEntity)
     _attr_has_entity_name = True
 
     _ICONS = {
-        "Wind": "mdi:weather-windy",
         "Rain": "mdi:weather-rainy",
     }
 

@@ -9,7 +9,7 @@ MANUFACTURER = "Digital Strom"
 INTEGRATION_AUTHOR = "Woon IoT BV"
 INTEGRATION_AUTHOR_ID = "MN-HJD-2026"
 INTEGRATION_URL = "https://github.com/wooniot/ha-digitalstrom-smart"
-INTEGRATION_VERSION = "2.6.0"
+INTEGRATION_VERSION = "2.7.0"
 
 # Application name shown in dSS Configurator under registered applications
 DSS_APP_NAME = "WoonIoT HA Connect"
@@ -79,7 +79,6 @@ SCENE_ALARM_2 = 75       # Alarm 2
 SCENE_ALARM_3 = 76       # Alarm 3 (Brand)
 SCENE_ALARM_4 = 77       # Alarm 4
 SCENE_FIRE = 76          # Brand (= Alarm 3)
-SCENE_WIND = 83          # Wind bescherming
 SCENE_RAIN = 85          # Regen bescherming
 
 # Legacy alias
@@ -109,8 +108,9 @@ APARTMENT_ALARM_SCENES = {
 }
 
 # Weather protection scenes — read-only binary sensors, not switches
+# Note: Wind Protection removed — dSS handles wind blocking per device internally,
+# there is no universal wind protection state. Users can use User Defined States.
 APARTMENT_WEATHER_SCENES = {
-    SCENE_WIND: "Wind",
     SCENE_RAIN: "Rain",
 }
 
