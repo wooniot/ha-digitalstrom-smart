@@ -9,5 +9,5 @@
   "iot_class": "local_push",
   "issue_tracker": "https://github.com/wooniot/ha-digitalstrom-smart/issues",
   "requirements": ["aiohttp>=3.8.0"],
-  "version": "2.7.1"
+  "version": "2.7.2"
 }

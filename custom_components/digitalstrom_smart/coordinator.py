@@ -270,7 +270,18 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
                         "Zone %d (%s) climate config response: %s",
                         zone_id, zone_info["name"], config,
                     )
-                    if control_mode and int(control_mode) > 0:
+                    # ControlMode can be int (>0) or string like "control"
+                    has_control = False
+                    if isinstance(control_mode, str) and control_mode not in ("0", "", "off"):
+                        has_control = True
+                    elif isinstance(control_mode, (int, float)) and control_mode > 0:
+                        has_control = True
+                    elif isinstance(control_mode, str):
+                        try:
+                            has_control = int(control_mode) > 0
+                        except ValueError:
+                            has_control = True  # non-numeric string = active
+                    if has_control:
                         self._climate_config[zone_id] = config
                 except DigitalStromApiError:
                     pass
@@ -404,12 +415,11 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
         Primary: ControlMode from getTemperatureControlConfig2 (most reliable).
         Fallback: TemperatureValue or NominalValue from getTemperatureControlValues.
         """
-        # Primary: climate config ControlMode (fetched for all heating zones)
+        # Primary: climate config present = has temp control
+        # (fetch_climate_data only stores config when ControlMode is active)
         config = self._climate_config.get(zone_id)
         if config:
-            control_mode = config.get("ControlMode", 0)
-            if control_mode > 0:
-                return True
+            return True
 
         # Fallback: temperature values from polling
         data = self._temperatures.get(zone_id)
