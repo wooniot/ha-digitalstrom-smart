@@ -1,6 +1,6 @@
 # Digital Strom Smart for Home Assistant
 
-[![HACS Badge](https://img.shields.io/badge/HACS-Default-41BDF5.svg)](https://github.com/hacs/integration)
+[![HACS Badge](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://github.com/hacs/integration)
 [![GitHub Release](https://img.shields.io/github/v/release/wooniot/ha-digitalstrom-smart)](https://github.com/wooniot/ha-digitalstrom-smart/releases)
 
 A zone-based, event-driven Home Assistant integration for **Digital Strom** home automation systems. Built by [Woon IoT BV](https://wooniot.nl) — Digital Strom installation specialists.
@@ -47,7 +47,8 @@ Unlike traditional per-device polling integrations, Digital Strom Smart uses the
 Unlock advanced features with a Pro license key from [wooniot.nl/pro](https://wooniot.nl/pro):
 
 - **Climate control** — target temperature, preset modes (Comfort, Economy, Night, Holiday), heating + cooling detection
-- **Outdoor weather sensors** — temperature, humidity, brightness, wind, air pressure, rain detection
+- **Outdoor weather sensors** — temperature, humidity, brightness, wind speed, wind gust, air pressure
+- **Rain detection** — real-time rain sensor via dSS system-protection state events
 - **Device identification** — blink any device for identification
 - **Save scenes** — save current output values as a new scene
 
@@ -66,9 +67,13 @@ Enter your Pro license key in the integration options (**Settings > Devices & Se
 ### HACS (recommended)
 
 1. Open HACS in Home Assistant
-2. Search for "Digital Strom Smart"
-3. Click Install
-4. Restart Home Assistant
+2. Click the three dots menu (⋮) in the top right corner
+3. Select **Custom repositories**
+4. Add this URL: `https://github.com/wooniot/ha-digitalstrom-smart`
+5. Category: **Integration**
+6. Click **Add**
+7. Now search for "Digital Strom Smart" and click Install
+8. Restart Home Assistant
 
 ### Manual
 
@@ -142,9 +147,10 @@ Home Assistant
         │     ├── callScene / undoScene → Light, Cover, Switch, Scene state
         │     ├── zoneSensorValue → Temperature sensors
         │     ├── deviceSensorValue → Device sensors (Ulux CO2/Lux/Temp)
-        │     └── stateChange → Binary sensors (contacts, smoke, door)
+        │     ├── stateChange → Binary sensors (contacts, smoke, door)
+        │     └── stateChange → Rain detection (apartment-level)
         │
-        ├── Polling (every 5 min)
+        ├── Polling (every 30s)
         │     ├── getConsumption → Energy sensor
         │     ├── getTemperatureControlValues → Zone temperatures
         │     └── PRO: getSensorValues, getCircuits, climate status
@@ -162,10 +168,25 @@ Home Assistant
 - Joker sensors (contacts, smoke detectors, door sensors) — auto-detected device class
 - Ulux and similar multi-sensor devices (CO2, brightness, temperature, humidity)
 - dSM meters (energy monitoring)
-- Outdoor weather stations (temperature, humidity, brightness, wind, pressure, rain)
+- Outdoor weather stations (temperature, humidity, brightness, wind speed/gust, pressure)
+- Rain detection via dSS system-protection state
 - Climate control zones (heating and cooling)
 
 ## Changelog
+
+### v2.7.4 (2026-03-17)
+- **Rain sensor fix** — detects apartment-level stateChange events (StateApartment;rain)
+- **Wind Protection removed** — dSS handles wind protection per device internally, no universal state exists
+- **Climate detection fix** — now detects climate zones regardless of ControlMode format (string or integer)
+- **Cooling mode fix** — robust type handling for ControlMode/OperationMode values from dSS API
+
+### v2.6.1 (2026-03-15)
+- **Weather protection** as binary sensors (rain detection via dSS system-protection)
+- **Climate entity improvements** — better detection for PLAN44/EnOcean setups
+
+### v2.5.0 (2026-03-14)
+- **Alarm entities** — alarm 1-4, panic, doorbell as switch entities
+- **Presence detection** — present, absent, sleeping, wakeup, standby, deep off
 
 ### v2.4.0 (2026-03-13)
 - **Per-dSM energy monitoring** moved to Free tier — each dSM meter gets its own device with power sensor
