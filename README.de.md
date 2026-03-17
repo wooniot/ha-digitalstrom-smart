@@ -1,6 +1,6 @@
 # Digital Strom Smart für Home Assistant
 
-[![HACS Badge](https://img.shields.io/badge/HACS-Default-41BDF5.svg)](https://github.com/hacs/integration)
+[![HACS Badge](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://github.com/hacs/integration)
 [![GitHub Release](https://img.shields.io/github/v/release/wooniot/ha-digitalstrom-smart)](https://github.com/wooniot/ha-digitalstrom-smart/releases)
 
 Eine zonenbasierte, eventgesteuerte Home Assistant Integration für **Digital Strom** Hausautomationssysteme. Entwickelt von [Woon IoT BV](https://wooniot.nl) — Digital Strom Installationsspezialisten.
@@ -66,8 +66,12 @@ Geben Sie Ihren Pro-Lizenzschlüssel in den Integrationsoptionen ein (**Einstell
 ### HACS (empfohlen)
 
 1. HACS in Home Assistant öffnen
-2. Nach "Digital Strom Smart" suchen
-3. Auf Installieren klicken
+2. Oben rechts auf das Drei-Punkte-Menü (⋮) klicken
+3. **Benutzerdefinierte Repositories** wählen
+4. Diese URL hinzufügen: `https://github.com/wooniot/ha-digitalstrom-smart`
+5. Kategorie: **Integration**
+6. Auf **Hinzufügen** klicken
+7. Jetzt nach "Digital Strom Smart" suchen und auf Installieren klicken
 4. Home Assistant neu starten
 
 ### Manuell
