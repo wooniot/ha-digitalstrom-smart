@@ -155,23 +155,33 @@ class DigitalStromClimate(CoordinatorEntity, ClimateEntity):
         return default
 
     def _is_cooling_mode(self, status: dict) -> bool:
-        """Detect if zone is in cooling mode from status or config."""
-        # Check status ControlMode (integer on some dSS, string on others)
-        control_mode = self._safe_int(
-            status.get("ControlMode"), -1
-        )
+        """Detect if zone is in cooling mode from status or config.
+
+        The dSS heating controller reports its basic status as "Heating" or
+        "Cooling". This can appear in various fields depending on firmware.
+        """
+        # Check all string fields for "cool" keyword
+        for key in ("ControlMode", "ControlState", "State", "state", "mode"):
+            val = str(status.get(key, "")).lower()
+            if "cool" in val:
+                return True
+
+        # Check numeric ControlMode (11=cooling, 12=cool_off)
+        control_mode = self._safe_int(status.get("ControlMode"), -1)
         if control_mode in (CONTROL_MODE_COOLING, CONTROL_MODE_COOL_OFF):
             return True
-        # Check config ControlMode (may be string like "control")
+
+        # Also check config for cooling mode
         config = self.coordinator.get_climate_config(self._zone_id)
         if config:
+            for key in ("ControlMode", "mode", "State"):
+                val = str(config.get(key, "")).lower()
+                if "cool" in val:
+                    return True
             cfg_mode = self._safe_int(config.get("ControlMode"), -1)
             if cfg_mode in (CONTROL_MODE_COOLING, CONTROL_MODE_COOL_OFF):
                 return True
-        # Check ControlState or OperationMode hints
-        control_state = str(status.get("ControlState", "")).lower()
-        if "cool" in control_state:
-            return True
+
         return False
 
     @property
@@ -179,10 +189,14 @@ class DigitalStromClimate(CoordinatorEntity, ClimateEntity):
         status = self.coordinator.get_climate_status(self._zone_id)
         if not status:
             return HVACMode.HEAT
-        _LOGGER.debug(
-            "Zone %d (%s) climate status: %s",
-            self._zone_id, self._zone_name, status,
-        )
+        # Log status changes (not every poll) for diagnostics
+        status_key = str(status.get("OperationMode", "")) + str(status.get("ControlMode", ""))
+        if not hasattr(self, "_last_status_key") or self._last_status_key != status_key:
+            self._last_status_key = status_key
+            _LOGGER.info(
+                "Zone %d (%s) climate status: %s",
+                self._zone_id, self._zone_name, status,
+            )
         op_mode = self._safe_int(status.get("OperationMode"), 0)
         if op_mode == 0:
             return HVACMode.OFF
