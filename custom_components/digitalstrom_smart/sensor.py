@@ -11,6 +11,7 @@ from homeassistant.components.sensor import (
     SensorEntity,
     SensorStateClass,
 )
+from homeassistant.helpers.entity import EntityCategory
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import UnitOfPower, UnitOfTemperature, PERCENTAGE
 
@@ -129,6 +130,9 @@ async def async_setup_entry(
     # --- FREE: Apartment energy sensor ---
     entities.append(DigitalStromEnergySensor(coordinator))
 
+    # --- FREE: License status (diagnostics) ---
+    entities.append(DigitalStromLicenseSensor(coordinator))
+
     # --- FREE: Temperature sensors per zone ---
     for zone_id, zone_info in coordinator.zones.items():
         if enabled_zones and zone_id not in enabled_zones:
@@ -225,6 +229,50 @@ class DigitalStromEnergySensor(CoordinatorEntity, SensorEntity):
     @property
     def native_value(self) -> int | None:
         return self.coordinator.consumption
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        self.async_write_ha_state()
+
+
+class DigitalStromLicenseSensor(CoordinatorEntity, SensorEntity):
+    """License status diagnostics sensor."""
+
+    _attr_has_entity_name = True
+    _attr_translation_key = "license_status"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_icon = "mdi:license"
+
+    def __init__(self, coordinator: DigitalStromCoordinator) -> None:
+        super().__init__(coordinator)
+        dss_id = coordinator.dss_id
+        self._attr_unique_id = f"ds_{dss_id}_license_status"
+        self._attr_device_info = {
+            "identifiers": {(DOMAIN, f"{dss_id}_apartment")},
+            "name": "Digital Strom Server",
+            "manufacturer": MANUFACTURER,
+            "model": "dSS",
+        }
+
+    @property
+    def native_value(self) -> str:
+        info = self.coordinator.license_info
+        if info.get("valid"):
+            ltype = info.get("type", "pro")
+            return f"Pro ({ltype})"
+        return "Free"
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        info = self.coordinator.license_info
+        attrs = {
+            "valid": info.get("valid", False),
+            "reason": info.get("reason", "unknown"),
+            "license_type": info.get("type"),
+            "validation_method": info.get("method"),
+            "dss_id_sent": info.get("dss_id_sent", ""),
+        }
+        return attrs
 
     @callback
     def _handle_coordinator_update(self) -> None:

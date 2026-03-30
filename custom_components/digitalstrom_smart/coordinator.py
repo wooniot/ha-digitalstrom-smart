@@ -134,6 +134,7 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
 
         # Pro license status
         self.pro_enabled = False
+        self.license_info: dict = {"valid": False, "reason": "no_key", "type": None, "method": None}
 
     def _parse_structure(self, structure: dict) -> None:
         """Parse apartment structure into zone and device dicts."""

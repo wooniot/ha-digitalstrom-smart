@@ -58,7 +58,8 @@
       "device_temperature": { "name": "Temperatur" },
       "device_humidity": { "name": "Luftfeuchtigkeit" },
       "device_brightness": { "name": "Helligkeit" },
-      "device_co2": { "name": "CO2" }
+      "device_co2": { "name": "CO2" },
+      "license_status": { "name": "Lizenzstatus" }
     },
     "light": {
       "zone_light": { "name": "Licht" }

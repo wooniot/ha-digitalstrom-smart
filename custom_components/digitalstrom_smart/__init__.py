@@ -68,9 +68,19 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # Check Pro license
     pro_key = entry.options.get(CONF_PRO_LICENSE, "")
     if pro_key:
-        coordinator.pro_enabled = await _check_pro_license(pro_key, dss_id)
+        license_result = await _check_pro_license(pro_key, dss_id)
+        coordinator.pro_enabled = license_result["valid"]
+        coordinator.license_info = license_result
         if coordinator.pro_enabled:
             _LOGGER.info("Digital Strom Pro features enabled")
+        else:
+            _LOGGER.warning(
+                "Pro license invalid: reason=%s, dss_id_sent=%s, method=%s",
+                license_result.get("reason"), license_result.get("dss_id_sent"),
+                license_result.get("method"),
+            )
+    else:
+        coordinator.license_info = {"valid": False, "reason": "no_key", "type": None, "method": None}
 
     # Initial data fetch
     await coordinator.async_config_entry_first_refresh()
@@ -173,26 +183,43 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     return unload_ok
 
 
-async def _check_pro_license(key: str, dss_id: str) -> bool:
-    """Validate Pro license key with WoonIoT server."""
+async def _check_pro_license(key: str, dss_id: str) -> dict:
+    """Validate Pro license key with WoonIoT server.
+
+    Returns dict with: valid, reason, type, method (online/offline).
+    """
     if not key:
-        return False
+        return {"valid": False, "reason": "no_key", "type": None, "method": None}
+    dss_short = dss_id[:8] if dss_id else ""
     try:
         from .const import PRO_LICENSE_URL
         import aiohttp
         async with aiohttp.ClientSession() as session:
             async with session.post(
                 PRO_LICENSE_URL,
-                json={"key": key, "dss_id": dss_id[:8] if dss_id else ""},
+                json={"key": key, "dss_id": dss_short},
                 timeout=aiohttp.ClientTimeout(total=5),
             ) as resp:
                 if resp.status == 200:
                     data = await resp.json()
-                    return data.get("valid", False)
+                    return {
+                        "valid": data.get("valid", False),
+                        "reason": data.get("reason", "ok" if data.get("valid") else "unknown"),
+                        "type": data.get("type"),
+                        "method": "online",
+                        "dss_id_sent": dss_short,
+                    }
     except Exception:
         pass
     # Offline fallback: verify HMAC signature of key
-    return _verify_key_offline(key)
+    valid = _verify_key_offline(key)
+    return {
+        "valid": valid,
+        "reason": "ok" if valid else "invalid_signature",
+        "type": "offline",
+        "method": "offline",
+        "dss_id_sent": dss_short,
+    }
 
 
 def _verify_key_offline(key: str) -> bool:
