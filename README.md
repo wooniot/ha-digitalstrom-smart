@@ -120,6 +120,7 @@ Device-level sensors (Ulux, etc.):
 
 Apartment-level:
 - `sensor.dss_power_consumption` — Total power (Watts)
+- `sensor.dss_license_status` — License status: Pro/Free with validation details (diagnostic)
 
 Per-circuit (dSM meters):
 - `sensor.<circuit_name>_power` — Power per dSM meter (each meter is its own device)
@@ -198,6 +199,11 @@ Digital Strom Smart supports multiple languages for all entity names, configurat
 Home Assistant automatically uses the correct language based on your system language setting. Want to add a translation? PRs welcome — just create a new JSON file in `custom_components/digitalstrom_smart/translations/`.
 
 ## Changelog
+
+### v2.9.2 (2026-03-30)
+- **License diagnostics sensor** — shows Pro/Free status with attributes: valid, reason, dss_id_sent, validation_method
+- **Pro validation logging** — warning in HA logs when license validation fails (with reason)
+- No more guessing why Pro features are inactive — check the sensor or HA logs
 
 ### v2.9.0 (2026-03-29)
 - **Full i18n** — all entity names now translatable via Home Assistant's native translation system
