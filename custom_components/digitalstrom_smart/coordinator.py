@@ -108,6 +108,8 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
 
         # Per-device on/off state tracking (for individual Joker switches)
         self._device_on_states: dict[str, bool] = {}  # dsuid -> is_on
+        # Per-device runtime output status from apartment/getDevices: {dsuid: {"on", "is_present", "is_valid"}}
+        self._device_runtime: dict[str, dict] = {}
 
         # Metering data
         self._circuit_power: dict[str, int] = {}  # dsuid -> watts
@@ -301,18 +303,34 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
         await self.poll_binary_input_states()
 
     async def poll_binary_input_states(self) -> None:
-        """Poll binary input states via apartment/getDevices API.
+        """Poll all device runtime info via the apartment/getDevices web API.
 
-        Uses a single API call to fetch all device states including
-        binaryInputs[0].state (1=active, 2=inactive). This is the only
-        reliable method — getState/isOn reflects output state (always True
-        for outputMode=0 sensors), and property tree paths don't exist.
+        Single HTTP call → updates binary input state (1=active, 2=inactive)
+        AND the per-device ``on`` output state for every device. No dS-bus
+        traffic because the dSS serves cached state.
         """
         try:
-            all_states = await self.api.get_all_binary_input_states()
+            devices = await self.api.get_all_devices_full()
         except Exception as err:
-            _LOGGER.debug("Binary input poll failed: %s", err)
+            _LOGGER.debug("Device poll failed: %s", err)
             return
+
+        # Parse binary inputs (1=active, 2=inactive)
+        all_states: dict[str, int] = {}
+        for dev in devices:
+            dsuid = dev.get("dSUID", "")
+            if not dsuid:
+                continue
+            bi = dev.get("binaryInputs", [])
+            if bi and "state" in bi[0]:
+                all_states[dsuid] = bi[0]["state"]
+            # Cache runtime output info for every device
+            self._device_runtime[dsuid] = {
+                "on": bool(dev.get("on", False)),
+                "is_present": bool(dev.get("isPresent", True)),
+                "is_valid": bool(dev.get("isValid", True)),
+                "output_mode": int(dev.get("outputMode", 0) or 0),
+            }
 
         # Log poll results for debugging (every poll cycle at debug level)
         binary_devices = {d: dev for d, dev in self.devices.items() if dev.get("binary_inputs")}
@@ -820,6 +838,10 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
     def get_device_on_state(self, dsuid: str) -> bool | None:
         """Get individual device on/off state."""
         return self._device_on_states.get(dsuid)
+
+    def get_device_runtime(self, dsuid: str) -> dict | None:
+        """Get last-known runtime info for a device (on, is_present, ...)."""
+        return self._device_runtime.get(dsuid)
 
     def set_device_on_state(self, dsuid: str, is_on: bool) -> None:
         """Set individual device on/off state."""

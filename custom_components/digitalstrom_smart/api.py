@@ -501,6 +501,24 @@ class DigitalStromApi:
         )
         return result.get("isOn", False)
 
+    async def get_all_devices_full(self) -> list[dict]:
+        """Return the full apartment/getDevices payload as a list.
+
+        One HTTP call to the dSS web API; no dS-bus traffic. Used by the
+        binary-input poll AND the per-device output status poll.
+        """
+        result = await self._request("/json/apartment/getDevices")
+        if isinstance(result, dict):
+            if "devices" in result:
+                result = result["devices"]
+            elif not isinstance(result, list):
+                _LOGGER.warning(
+                    "getDevices unexpected format: type=%s, sample=%s",
+                    type(result).__name__, str(result)[:200],
+                )
+                return []
+        return result if isinstance(result, list) else []
+
     async def get_all_binary_input_states(self) -> dict[str, int]:
         """Get binary input states for ALL devices via apartment/getDevices.
 
@@ -509,42 +527,19 @@ class DigitalStromApi:
         isOn which reflects output state (always True for outputMode=0 devices),
         and property tree paths don't exist for binary inputs.
         """
-        result = await self._request("/json/apartment/getDevices")
+        devices = await self.get_all_devices_full()
         states = {}
-
-        # Debug: log the type and structure of the API response
-        if isinstance(result, dict):
-            _LOGGER.debug(
-                "getDevices returned dict with keys: %s",
-                list(result.keys())[:10],
-            )
-            # Some dSS firmware versions wrap devices in a key
-            if "devices" in result:
-                result = result["devices"]
-            elif not isinstance(result, list):
-                _LOGGER.warning(
-                    "getDevices unexpected format: type=%s, sample=%s",
-                    type(result).__name__, str(result)[:200],
-                )
-
-        device_count = 0
         bi_count = 0
-        for dev in result if isinstance(result, list) else []:
-            device_count += 1
+        for dev in devices:
             dsuid = dev.get("dSUID", "")
             bi = dev.get("binaryInputs", [])
             if dsuid and bi:
                 bi_count += 1
                 if "state" in bi[0]:
                     states[dsuid] = bi[0]["state"]
-                else:
-                    _LOGGER.debug(
-                        "Device %s has binaryInputs but no 'state' key: %s",
-                        dsuid[:12], bi[0],
-                    )
         _LOGGER.debug(
             "getDevices: %d devices total, %d with binaryInputs, %d with state",
-            device_count, bi_count, len(states),
+            len(devices), bi_count, len(states),
         )
         return states
 

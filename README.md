@@ -209,6 +209,11 @@ Home Assistant automatically uses the correct language based on your system lang
 
 ## Changelog
 
+### v2.10.8 (2026-05-12)
+- **Per-device output status** — every output-capable dS device (lights, shades, klimaat actuators) gets a diagnostic `binary_sensor.<device> status` showing whether the component is currently on. Sourced from `apartment/getDevices` web API only — no dS-bus polling, no extra HTTP-call (parsed from the existing 5-second device poll that already runs for binary inputs)
+- Joker devices keep their existing `switch` entity — no duplicates
+- Attributes: `dsuid`, `hw_info`, `output_mode`, `is_present`, `is_valid`. Entity becomes `unavailable` when the dSS reports `isPresent=false`
+
 ### v2.10.7 (2026-05-12)
 - **One entity per timer** — the separate `sensor.<timer>` is gone; only the `switch.<timer>` remains. The switch state shows whether the timer is enabled, and the `last_executed` timestamp is now an attribute on the switch alongside `time_base`, `offset_seconds`, `recurrence_base` and `timer_id`
 - All timers (enabled and disabled) appear as switches; toggling the switch updates the dSS via `property/setBoolean`

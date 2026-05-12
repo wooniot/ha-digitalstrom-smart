@@ -12,6 +12,7 @@ from homeassistant.components.binary_sensor import (
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
@@ -121,6 +122,21 @@ async def async_setup_entry(
     # --- FREE: Configurator User Defined States (custom-states with proper names) ---
     for sid, data in coordinator.custom_states.items():
         entities.append(DigitalStromCustomState(coordinator, sid, data))
+
+    # --- FREE: Per-device output status for output-capable devices (lights, shades, ...) ---
+    # Skip Jokers — they already have switch entities. All data via apartment/getDevices
+    # web API, no dS-bus traffic. Diagnostic category to keep them out of default views.
+    for dsuid, dev in coordinator.devices.items():
+        if dev.get("output_mode", 0) <= 0:
+            continue
+        if GROUP_JOKER in dev.get("groups", []):
+            continue  # Jokers are already exposed as switch entities
+        zone_id = dev.get("zone_id")
+        if enabled_zones and zone_id not in enabled_zones:
+            continue
+        entities.append(
+            DigitalStromDeviceOutputStatus(coordinator, dsuid, dev)
+        )
 
     async_add_entities(entities)
 
@@ -282,6 +298,69 @@ class DigitalStromUserBinaryState(CoordinatorEntity, BinarySensorEntity):
         if value == 2:
             return False
         return None
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        self.async_write_ha_state()
+
+
+class DigitalStromDeviceOutputStatus(CoordinatorEntity, BinarySensorEntity):
+    """Per-component on/off status for an output-capable dSS device.
+
+    Sourced from ``apartment/getDevices`` (web API only — no dS-bus polling).
+    Read-only: switching individual devices outside scenes is discouraged in
+    dS, so this entity surfaces status only. Diagnostic category so it does
+    not crowd default UI views, but fully usable in templates and history.
+    """
+
+    _attr_has_entity_name = True
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_device_class = BinarySensorDeviceClass.POWER
+    _attr_icon = "mdi:lightbulb-on-outline"
+
+    def __init__(
+        self,
+        coordinator: DigitalStromCoordinator,
+        dsuid: str,
+        dev: dict,
+    ) -> None:
+        super().__init__(coordinator)
+        self._dsuid = dsuid
+        dss_id = coordinator.dss_id
+        zone_id = dev.get("zone_id", 0)
+        dev_name = dev.get("name") or dsuid[:8]
+        self._attr_unique_id = f"ds_{dss_id}_dev_{dsuid}_output"
+        self._attr_name = f"{dev_name} status"
+        self._attr_device_info = {
+            "identifiers": {(DOMAIN, f"{dss_id}_zone_{zone_id}")},
+            "name": dev.get("zone_name", ""),
+            "manufacturer": MANUFACTURER,
+            "model": "Zone",
+        }
+
+    @property
+    def available(self) -> bool:
+        runtime = self.coordinator.get_device_runtime(self._dsuid) or {}
+        return bool(runtime.get("is_present", True))
+
+    @property
+    def is_on(self) -> bool | None:
+        runtime = self.coordinator.get_device_runtime(self._dsuid)
+        if not runtime:
+            return None
+        return runtime.get("on")
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        runtime = self.coordinator.get_device_runtime(self._dsuid) or {}
+        dev = self.coordinator.devices.get(self._dsuid, {})
+        return {
+            "dsuid": self._dsuid,
+            "hw_info": dev.get("hw_info"),
+            "output_mode": runtime.get("output_mode"),
+            "is_present": runtime.get("is_present"),
+            "is_valid": runtime.get("is_valid"),
+        }
 
     @callback
     def _handle_coordinator_update(self) -> None:
