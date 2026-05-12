@@ -28,7 +28,7 @@ from .coordinator import DigitalStromCoordinator
 
 # Pre-import all platform modules to avoid blocking imports in event loop (HA 2026+)
 from . import (  # noqa: F401
-    light, cover, sensor, scene, switch, climate, binary_sensor, select,
+    light, cover, sensor, scene, switch, climate, binary_sensor, select, button,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -103,11 +103,21 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     except Exception as err:
         _LOGGER.warning("Device sensor fetch failed (non-fatal): %s", err)
 
-    # Fetch per-circuit (dSM) power data
+    # Fetch per-circuit (dSM) power + cumulative energy
     try:
         await coordinator.fetch_circuit_data()
     except Exception as err:
         _LOGGER.warning("Circuit data fetch failed (non-fatal): %s", err)
+
+    # Fetch User Defined Actions and States (free, apartment-level)
+    try:
+        await coordinator.fetch_user_actions()
+    except Exception as err:
+        _LOGGER.warning("User actions fetch failed (non-fatal): %s", err)
+    try:
+        await coordinator.fetch_user_states()
+    except Exception as err:
+        _LOGGER.warning("User states fetch failed (non-fatal): %s", err)
 
     # Pro: fetch climate, sensor, and apartment state data
     if coordinator.pro_enabled:

@@ -631,15 +631,81 @@ class DigitalStromApi:
         return result.get("values", [])
 
     async def get_circuit_energy(self, dsuid: str) -> int:
-        """Get cumulative energy meter value for a circuit (Ws).
+        """Get cumulative energy meter value for a circuit (Watt-seconds).
 
-        PRO FEATURE.
+        Returned value is the lifetime accumulated energy of the dSM,
+        suitable for HA Energy Dashboard (state_class=total_increasing)
+        after conversion: kWh = Ws / 3_600_000.
         """
         result = await self._request(
             "/json/circuit/getEnergyMeterValue",
             {"dsuid": dsuid},
         )
         return result.get("meterValue", 0)
+
+    # =====================================================================
+    # User Defined Actions & States (apartment-level automation primitives)
+    # =====================================================================
+
+    async def get_user_defined_actions(self) -> list[dict]:
+        """Fetch User Defined Actions from the dSS property tree.
+
+        Returned actions originate from the dSS "user-defined actions" addon
+        (configured in the Configurator). Each item has: id, name, source,
+        disabled (bool).
+        """
+        result = await self._request(
+            "/json/property/query2",
+            {"query": "/usr/events/*(id,name,source,disabled)"},
+        )
+        items = []
+        for _, entry in result.items():
+            if isinstance(entry, dict) and entry.get("id"):
+                items.append({
+                    "id": str(entry.get("id", "")),
+                    "name": entry.get("name", ""),
+                    "source": entry.get("source", ""),
+                    "disabled": bool(entry.get("disabled", False)),
+                })
+        return items
+
+    async def get_user_defined_states(self) -> list[dict]:
+        """Fetch User Defined / apartment-wide states from /usr/states.
+
+        Each item has: name, state (str), value (int|str). Binary states
+        report value 1=active, 2=inactive.
+        """
+        result = await self._request(
+            "/json/property/query2",
+            {"query": "/usr/states/*(name,state,value)"},
+        )
+        items = []
+        for key, entry in result.items():
+            if not isinstance(entry, dict):
+                continue
+            items.append({
+                "name": entry.get("name", key),
+                "state": entry.get("state", ""),
+                "value": entry.get("value"),
+            })
+        return items
+
+    async def get_state_value(self, name: str) -> dict:
+        """Get the current value of a named state. Returns {value: ...}."""
+        try:
+            return await self._request(
+                "/json/state/get",
+                {"name": name},
+            )
+        except DigitalStromApiError:
+            return {}
+
+    async def raise_event(self, name: str, parameter: str | None = None) -> None:
+        """Raise a system event by name. Used to trigger User Defined Actions."""
+        params: dict[str, Any] = {"name": name}
+        if parameter:
+            params["parameter"] = parameter
+        await self._request("/json/event/raise", params)
 
     # =====================================================================
     # Event subscription

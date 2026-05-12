@@ -38,7 +38,10 @@ Unlike traditional per-device polling integrations, Digital Strom Smart uses the
 - **Temperature sensors** per zone (including rooms without heating, using any available source: zone sensors, device sensors)
 - **Device sensors** — Ulux and similar devices expose CO2, brightness, temperature, and humidity as individual sensor entities
 - **Energy monitoring** (apartment-level power consumption)
-- **Per-circuit energy monitoring** — power consumption per dSM meter, each as its own device
+- **Per-circuit energy monitoring** — power **and** lifetime kWh per dSM meter, each as its own device, ready for the **HA Energy Dashboard**
+- **Apartment kWh sensor** — aggregated cumulative energy across all dSMs
+- **User Defined Actions** — actions configured in the dSS Configurator appear as Home Assistant **buttons**
+- **User Defined States** — custom and apartment-wide dSS states appear as **sensors / binary sensors** with live updates from `stateChange` events
 - **Event-driven** — instant state updates when someone uses a wall switch
 - **Scenes for all groups** — Light, Shade, and Heating scenes
 
@@ -123,7 +126,13 @@ Apartment-level:
 - `sensor.dss_license_status` — License status: Pro/Free with validation details (diagnostic)
 
 Per-circuit (dSM meters):
-- `sensor.<circuit_name>_power` — Power per dSM meter (each meter is its own device)
+- `sensor.<circuit_name>_power` — Instantaneous power per dSM meter (W)
+- `sensor.<circuit_name>_energy` — Cumulative lifetime energy per dSM (kWh, `total_increasing`)
+- `sensor.dss_energy_consumption` — Apartment-wide kWh, sum of all dSMs (Energy Dashboard ready)
+
+User Defined Actions & States (apartment):
+- `button.<action_name>` — One button per action defined in the dSS Configurator
+- `sensor.<state_name>` / `binary_sensor.<state_name>` — One entity per custom/apartment state, with live updates from dSS events
 
 Pro entities (requires license):
 - `climate.<zone>_climate` — Zone climate control with target temperature
@@ -199,6 +208,13 @@ Digital Strom Smart supports multiple languages for all entity names, configurat
 Home Assistant automatically uses the correct language based on your system language setting. Want to add a translation? PRs welcome — just create a new JSON file in `custom_components/digitalstrom_smart/translations/`.
 
 ## Changelog
+
+### v2.10.0 (2026-05-12)
+- **Energy Dashboard support** — every dSM (group) now reports cumulative energy in kWh with `device_class=energy` and `state_class=total_increasing`, so circuits show up in the HA Energy Dashboard out of the box
+- **Apartment-wide kWh sensor** — aggregated lifetime energy across all dSMs (`sensor.dss_energy_consumption`)
+- **User Defined Actions** — actions configured in the dSS Configurator are imported as HA `button` entities; pressing the button raises the corresponding dSS event
+- **User Defined States** — custom and apartment-wide dSS states from `/usr/states` are imported as `sensor` (multi-value) or `binary_sensor` (active/inactive) entities with live updates from `stateChange` events
+- New `button` platform and additional translation strings (EN/NL/DE)
 
 ### v2.9.2 (2026-03-30)
 - **License diagnostics sensor** — shows Pro/Free status with attributes: valid, reason, dss_id_sent, validation_method

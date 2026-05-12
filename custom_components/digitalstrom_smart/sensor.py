@@ -13,7 +13,7 @@ from homeassistant.components.sensor import (
 )
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import UnitOfPower, UnitOfTemperature, PERCENTAGE
+from homeassistant.const import UnitOfPower, UnitOfEnergy, UnitOfTemperature, PERCENTAGE
 
 # Import units that may have moved between HA versions
 try:
@@ -194,16 +194,36 @@ async def async_setup_entry(
                     )
                 )
 
-    # --- FREE: Per-circuit (dSM) power sensors ---
+    # --- FREE: Per-circuit (dSM) power + energy sensors ---
     if coordinator.circuits:
         for circuit in coordinator.circuits:
             dsuid = circuit.get("dSUID", "")
             if dsuid:
-                entities.append(
-                    DigitalStromCircuitSensor(coordinator, circuit)
-                )
+                entities.append(DigitalStromCircuitSensor(coordinator, circuit))
+                entities.append(DigitalStromCircuitEnergySensor(coordinator, circuit))
+
+    # --- FREE: Apartment-level energy (kWh) — sum of all dSMs ---
+    if coordinator.circuits:
+        entities.append(DigitalStromApartmentEnergySensor(coordinator))
+
+    # --- FREE: User Defined States (text sensors; binary ones live in binary_sensor) ---
+    for name, data in coordinator.user_states.items():
+        if _is_binary_state(data):
+            continue
+        entities.append(DigitalStromUserStateSensor(coordinator, name))
 
     async_add_entities(entities)
+
+
+def _is_binary_state(data: dict) -> bool:
+    """Return True if a dSS state behaves as binary (active/inactive)."""
+    state = str(data.get("state", "")).lower()
+    if state in ("active", "inactive"):
+        return True
+    value = data.get("value")
+    if isinstance(value, (int, float)) and value in (1, 2):
+        return True
+    return False
 
 
 class DigitalStromEnergySensor(CoordinatorEntity, SensorEntity):
@@ -496,12 +516,13 @@ class DigitalStromOutdoorSensor(CoordinatorEntity, SensorEntity):
 
 
 class DigitalStromCircuitSensor(CoordinatorEntity, SensorEntity):
-    """Per-circuit (dSM) power consumption sensor."""
+    """Per-circuit (dSM) instantaneous power consumption."""
 
     _attr_has_entity_name = True
     _attr_device_class = SensorDeviceClass.POWER
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_native_unit_of_measurement = UnitOfPower.WATT
+    _attr_suggested_display_precision = 0
 
     def __init__(
         self,
@@ -526,7 +547,116 @@ class DigitalStromCircuitSensor(CoordinatorEntity, SensorEntity):
     @property
     def native_value(self) -> int | None:
         val = self.coordinator.get_circuit_power(self._dsuid)
-        return val if val else None
+        return val if val else 0
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        self.async_write_ha_state()
+
+
+class DigitalStromCircuitEnergySensor(CoordinatorEntity, SensorEntity):
+    """Per-circuit (dSM) cumulative energy meter — feeds HA Energy Dashboard."""
+
+    _attr_has_entity_name = True
+    _attr_device_class = SensorDeviceClass.ENERGY
+    _attr_state_class = SensorStateClass.TOTAL_INCREASING
+    _attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
+    _attr_suggested_display_precision = 2
+
+    def __init__(
+        self,
+        coordinator: DigitalStromCoordinator,
+        circuit: dict,
+    ) -> None:
+        super().__init__(coordinator)
+        self._dsuid = circuit.get("dSUID", "")
+        dss_id = coordinator.dss_id
+        circuit_name = circuit.get("name", self._dsuid[:8])
+        hw_name = circuit.get("hwName", "dSM")
+        self._attr_unique_id = f"ds_{dss_id}_circuit_{self._dsuid}_energy"
+        self._attr_translation_key = "circuit_energy"
+        self._attr_device_info = {
+            "identifiers": {(DOMAIN, f"{dss_id}_circuit_{self._dsuid}")},
+            "name": circuit_name,
+            "manufacturer": MANUFACTURER,
+            "model": hw_name,
+            "via_device": (DOMAIN, f"{dss_id}_apartment"),
+        }
+
+    @property
+    def native_value(self) -> float | None:
+        return self.coordinator.get_circuit_energy_kwh(self._dsuid)
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        self.async_write_ha_state()
+
+
+class DigitalStromApartmentEnergySensor(CoordinatorEntity, SensorEntity):
+    """Apartment-wide cumulative energy — sum of all dSM meters."""
+
+    _attr_has_entity_name = True
+    _attr_translation_key = "apartment_energy"
+    _attr_device_class = SensorDeviceClass.ENERGY
+    _attr_state_class = SensorStateClass.TOTAL_INCREASING
+    _attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
+    _attr_suggested_display_precision = 2
+
+    def __init__(self, coordinator: DigitalStromCoordinator) -> None:
+        super().__init__(coordinator)
+        dss_id = coordinator.dss_id
+        self._attr_unique_id = f"ds_{dss_id}_apartment_energy"
+        self._attr_device_info = {
+            "identifiers": {(DOMAIN, f"{dss_id}_apartment")},
+            "name": "Digital Strom Server",
+            "manufacturer": MANUFACTURER,
+            "model": "dSS",
+        }
+
+    @property
+    def native_value(self) -> float | None:
+        return self.coordinator.apartment_energy_kwh
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        self.async_write_ha_state()
+
+
+class DigitalStromUserStateSensor(CoordinatorEntity, SensorEntity):
+    """A multi-valued dSS User Defined / apartment state (text sensor)."""
+
+    _attr_has_entity_name = True
+    _attr_icon = "mdi:state-machine"
+
+    def __init__(
+        self,
+        coordinator: DigitalStromCoordinator,
+        state_name: str,
+    ) -> None:
+        super().__init__(coordinator)
+        self._state_name = state_name
+        dss_id = coordinator.dss_id
+        # Sanitize state name for unique_id
+        safe = state_name.replace(".", "_").replace(" ", "_")
+        self._attr_unique_id = f"ds_{dss_id}_userstate_{safe}"
+        self._attr_name = state_name
+        self._attr_device_info = {
+            "identifiers": {(DOMAIN, f"{dss_id}_apartment")},
+            "name": "Digital Strom Server",
+            "manufacturer": MANUFACTURER,
+            "model": "dSS",
+        }
+
+    @property
+    def native_value(self) -> str | None:
+        data = self.coordinator.get_user_state(self._state_name)
+        if not data:
+            return None
+        state = data.get("state")
+        if state:
+            return str(state)
+        value = data.get("value")
+        return str(value) if value is not None else None
 
     @callback
     def _handle_coordinator_update(self) -> None:

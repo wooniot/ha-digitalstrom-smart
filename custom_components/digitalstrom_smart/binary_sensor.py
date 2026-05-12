@@ -113,7 +113,23 @@ async def async_setup_entry(
                 DigitalStromWeatherProtectionSensor(coordinator, scene_nr, name)
             )
 
+    # --- FREE: User Defined States that behave as binary (active/inactive) ---
+    for name, data in coordinator.user_states.items():
+        if _is_binary_state(data):
+            entities.append(DigitalStromUserBinaryState(coordinator, name))
+
     async_add_entities(entities)
+
+
+def _is_binary_state(data: dict) -> bool:
+    """Mirror of sensor._is_binary_state — keep them in sync."""
+    state = str(data.get("state", "")).lower()
+    if state in ("active", "inactive"):
+        return True
+    value = data.get("value")
+    if isinstance(value, (int, float)) and value in (1, 2):
+        return True
+    return False
 
 
 class DigitalStromJokerBinarySensor(CoordinatorEntity, BinarySensorEntity):
@@ -216,6 +232,52 @@ class DigitalStromWeatherProtectionSensor(CoordinatorEntity, BinarySensorEntity)
     @property
     def is_on(self) -> bool:
         return self.coordinator.is_alarm_active(self._scene_nr)
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        self.async_write_ha_state()
+
+
+class DigitalStromUserBinaryState(CoordinatorEntity, BinarySensorEntity):
+    """A binary dSS User Defined / apartment state (active=on, inactive=off)."""
+
+    _attr_has_entity_name = True
+    _attr_icon = "mdi:toggle-switch-outline"
+
+    def __init__(
+        self,
+        coordinator: DigitalStromCoordinator,
+        state_name: str,
+    ) -> None:
+        super().__init__(coordinator)
+        self._state_name = state_name
+        dss_id = coordinator.dss_id
+        safe = state_name.replace(".", "_").replace(" ", "_")
+        self._attr_unique_id = f"ds_{dss_id}_userstate_{safe}"
+        self._attr_name = state_name
+        self._attr_device_info = {
+            "identifiers": {(DOMAIN, f"{dss_id}_apartment")},
+            "name": "Digital Strom Server",
+            "manufacturer": MANUFACTURER,
+            "model": "dSS",
+        }
+
+    @property
+    def is_on(self) -> bool | None:
+        data = self.coordinator.get_user_state(self._state_name)
+        if not data:
+            return None
+        state = str(data.get("state", "")).lower()
+        if state == "active":
+            return True
+        if state == "inactive":
+            return False
+        value = data.get("value")
+        if value == 1:
+            return True
+        if value == 2:
+            return False
+        return None
 
     @callback
     def _handle_coordinator_update(self) -> None:

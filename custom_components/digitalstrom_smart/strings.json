@@ -48,6 +48,8 @@
       "target_temperature": { "name": "Target Temperature" },
       "heating_output": { "name": "Heating Output" },
       "circuit_power": { "name": "Power" },
+      "circuit_energy": { "name": "Energy" },
+      "apartment_energy": { "name": "Energy Consumption" },
       "outdoor_temperature": { "name": "Outdoor Temperature" },
       "outdoor_humidity": { "name": "Outdoor Humidity" },
       "outdoor_brightness": { "name": "Outdoor Brightness" },

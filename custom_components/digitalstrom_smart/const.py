@@ -9,7 +9,7 @@ MANUFACTURER = "Digital Strom"
 INTEGRATION_AUTHOR = "Woon IoT BV"
 INTEGRATION_AUTHOR_ID = "MN-HJD-2026"
 INTEGRATION_URL = "https://github.com/wooniot/ha-digitalstrom-smart"
-INTEGRATION_VERSION = "2.9.2"
+INTEGRATION_VERSION = "2.10.0"
 
 # Application name shown in dSS Configurator under registered applications
 DSS_APP_NAME = "WoonIoT HA Connect"
@@ -401,10 +401,31 @@ CONF_PRO_LICENSE = "pro_license_key"
 
 # --- Platforms ---
 # Free platforms (always loaded)
-PLATFORMS_FREE = ["light", "cover", "sensor", "scene", "switch", "binary_sensor"]
+PLATFORMS_FREE = ["light", "cover", "sensor", "scene", "switch", "binary_sensor", "button"]
 
 # Pro platforms (requires license)
 PLATFORMS_PRO = ["climate", "select"]
 
 # All platforms
 PLATFORMS = PLATFORMS_FREE + PLATFORMS_PRO
+
+# --- User Defined States ---
+# State source that marks an entry as a true User Defined Action (set in dSS Configurator)
+USER_ACTION_SOURCE = "system-addon-user-defined-actions"
+
+# System-level state names already exposed elsewhere — never import as User State
+SKIP_USER_STATES = {
+    "rain",          # already exposed as binary_sensor.dss_rain / weather protection
+    "wind",          # handled per-device by dSS
+    "frost",
+    "fire",
+    "fireMuteEnabled",
+    "alarm", "alarm2", "alarm3", "alarm4",
+    "panic",
+    "presence",      # exposed via select.presence_mode (Pro)
+    "hibernation",
+}
+
+# State value mapping: dSS internally encodes "active"=1, "inactive"=2 for binary states
+STATE_VALUE_ACTIVE = 1
+STATE_VALUE_INACTIVE = 2

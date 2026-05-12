@@ -48,6 +48,8 @@
       "target_temperature": { "name": "Doeltemperatuur" },
       "heating_output": { "name": "Verwarmingsuitgang" },
       "circuit_power": { "name": "Vermogen" },
+      "circuit_energy": { "name": "Energie" },
+      "apartment_energy": { "name": "Energieverbruik" },
       "outdoor_temperature": { "name": "Buitentemperatuur" },
       "outdoor_humidity": { "name": "Luchtvochtigheid buiten" },
       "outdoor_brightness": { "name": "Helderheid buiten" },

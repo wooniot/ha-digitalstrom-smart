@@ -48,6 +48,8 @@
       "target_temperature": { "name": "Solltemperatur" },
       "heating_output": { "name": "Heizleistung" },
       "circuit_power": { "name": "Leistung" },
+      "circuit_energy": { "name": "Energie" },
+      "apartment_energy": { "name": "Energieverbrauch" },
       "outdoor_temperature": { "name": "Außentemperatur" },
       "outdoor_humidity": { "name": "Außenluftfeuchtigkeit" },
       "outdoor_brightness": { "name": "Außenhelligkeit" },

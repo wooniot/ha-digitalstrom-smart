@@ -48,6 +48,9 @@ from .const import (
     ALARM_SCENE_NUMBERS,
     SCENE_PRESENT,
     SCENE_RAIN,
+    USER_ACTION_SOURCE,
+    SKIP_USER_STATES,
+    STATE_VALUE_ACTIVE,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -106,9 +109,14 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
         # Per-device on/off state tracking (for individual Joker switches)
         self._device_on_states: dict[str, bool] = {}  # dsuid -> is_on
 
-        # Metering data (PRO)
+        # Metering data
         self._circuit_power: dict[str, int] = {}  # dsuid -> watts
+        self._circuit_energy_ws: dict[str, int] = {}  # dsuid -> cumulative Watt-seconds
         self._circuits: list[dict] = []
+
+        # User Defined Actions & States (apartment automation primitives)
+        self._user_actions: list[dict] = []   # [{"id", "name", "source", "disabled"}]
+        self._user_states: dict[str, dict] = {}   # name -> {"state", "value"}
 
         # Parse structure into zones and devices
         self.zones: dict[int, dict] = {}
@@ -383,7 +391,12 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
             pass
 
     async def fetch_circuit_data(self) -> None:
-        """Fetch dSM circuit/meter information and per-circuit power."""
+        """Fetch dSM circuit/meter information, per-circuit power and energy.
+
+        Power: instantaneous Watts per dSM (via metering/getLatest).
+        Energy: lifetime cumulative Watt-seconds per dSM (via circuit/getEnergyMeterValue).
+        The energy values feed the HA Energy Dashboard via TOTAL_INCREASING sensors.
+        """
         try:
             if not self._circuits:
                 all_circuits = await self.api.get_circuits()
@@ -397,7 +410,7 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
                     len(self._circuits),
                     ", ".join(c.get("name", "") for c in self._circuits),
                 )
-            # Fetch per-circuit power (must query each meter individually)
+            # Fetch per-circuit power + cumulative energy
             for circuit in self._circuits:
                 dsuid = circuit.get("dSUID", "")
                 if not dsuid:
@@ -410,8 +423,72 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
                         self._circuit_power[dsuid] = int(v.get("value", 0))
                 except DigitalStromApiError:
                     pass
+                try:
+                    ws = await self.api.get_circuit_energy(dsuid)
+                    if ws and ws > 0:
+                        self._circuit_energy_ws[dsuid] = int(ws)
+                except DigitalStromApiError:
+                    pass
         except DigitalStromApiError as err:
             _LOGGER.debug("Circuit data fetch failed: %s", err)
+
+    # =====================================================================
+    # User Defined Actions & States
+    # =====================================================================
+
+    async def fetch_user_actions(self) -> None:
+        """Fetch User Defined Actions from dSS — buttons in HA."""
+        try:
+            raw = await self.api.get_user_defined_actions()
+        except DigitalStromApiError as err:
+            _LOGGER.debug("User action fetch failed: %s", err)
+            return
+        # Keep only true User Defined Actions (created via Configurator addon)
+        # and skip disabled entries
+        filtered = [
+            a for a in raw
+            if a.get("source") == USER_ACTION_SOURCE
+            and not a.get("disabled", False)
+            and a.get("id")
+            and a.get("name")
+        ]
+        # De-duplicate by id (keep first occurrence)
+        seen: set[str] = set()
+        unique: list[dict] = []
+        for a in filtered:
+            if a["id"] in seen:
+                continue
+            seen.add(a["id"])
+            unique.append(a)
+        self._user_actions = unique
+        _LOGGER.info(
+            "User defined actions: %d (of %d total events)",
+            len(unique), len(raw),
+        )
+
+    async def fetch_user_states(self) -> None:
+        """Fetch User Defined / apartment-wide states from dSS — sensors in HA.
+
+        System states that are already exposed via dedicated entities
+        (rain, alarms, presence, etc.) are skipped — see SKIP_USER_STATES.
+        """
+        try:
+            raw = await self.api.get_user_defined_states()
+        except DigitalStromApiError as err:
+            _LOGGER.debug("User state fetch failed: %s", err)
+            return
+        for entry in raw:
+            name = entry.get("name", "")
+            if not name or name in SKIP_USER_STATES:
+                continue
+            self._user_states[name] = {
+                "state": entry.get("state", ""),
+                "value": entry.get("value"),
+            }
+        _LOGGER.info(
+            "User defined states: %d imported (of %d total)",
+            len(self._user_states), len(raw),
+        )
 
     async def fetch_device_sensors(self) -> None:
         """Fetch initial device sensor values via zone/getSensorValues.
@@ -572,6 +649,37 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
 
     def get_circuit_power(self, dsuid: str) -> int:
         return self._circuit_power.get(dsuid, 0)
+
+    def get_circuit_energy_kwh(self, dsuid: str) -> float | None:
+        """Cumulative energy for a single dSM in kWh (TOTAL_INCREASING)."""
+        ws = self._circuit_energy_ws.get(dsuid)
+        if ws is None or ws <= 0:
+            return None
+        return round(ws / 3_600_000, 3)
+
+    @property
+    def apartment_energy_kwh(self) -> float | None:
+        """Sum of all dSM cumulative energy values, in kWh.
+
+        Returns None until at least one meter has reported a value.
+        """
+        if not self._circuit_energy_ws:
+            return None
+        total = sum(v for v in self._circuit_energy_ws.values() if v > 0)
+        if total <= 0:
+            return None
+        return round(total / 3_600_000, 3)
+
+    @property
+    def user_actions(self) -> list[dict]:
+        return self._user_actions
+
+    @property
+    def user_states(self) -> dict[str, dict]:
+        return self._user_states
+
+    def get_user_state(self, name: str) -> dict | None:
+        return self._user_states.get(name)
 
     def get_device_sensor_value(self, dsuid: str, sensor_type: int) -> float | None:
         """Get a device sensor value by type."""
@@ -863,6 +971,25 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
                         state_value, self._heating_system_cooling,
                     )
                     self.async_update_listeners()
+            elif state_name and state_name in self._user_states:
+                # User Defined / apartment-wide state change (named state, no dsuid)
+                new_val = state_value
+                # dSS sometimes reports numeric value as string; normalize binary states
+                state_str = state_value.lower() if isinstance(state_value, str) else state_value
+                value_norm = state_str
+                if state_str in ("active", "1"):
+                    value_norm = STATE_VALUE_ACTIVE
+                elif state_str in ("inactive", "2"):
+                    value_norm = 2
+                self._user_states[state_name] = {
+                    "state": str(state_value),
+                    "value": value_norm,
+                }
+                _LOGGER.debug(
+                    "User state change: %s = %s (value=%s)",
+                    state_name, state_value, value_norm,
+                )
+                self.async_update_listeners()
             elif dsuid:
                 # Binary input state changes (contacts, smoke, etc.)
                 # Match dsuid case-insensitively and handle truncated dsuid from some dSS versions
