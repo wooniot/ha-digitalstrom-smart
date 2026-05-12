@@ -29,12 +29,21 @@ async def async_setup_entry(
     data = hass.data[DOMAIN][entry.entry_id]
     coordinator: DigitalStromCoordinator = data["coordinator"]
 
-    entities = [
+    entities: list[ButtonEntity] = [
         DigitalStromUserActionButton(coordinator, action)
         for action in coordinator.user_actions
     ]
     if entities:
         _LOGGER.info("Adding %d User Defined Action buttons", len(entities))
+
+    # One run-once button per Configurator timer
+    timer_count = 0
+    for tid, data in coordinator.timed_events.items():
+        entities.append(DigitalStromTimerRunOnceButton(coordinator, tid, data))
+        timer_count += 1
+    if timer_count:
+        _LOGGER.info("Adding %d Timer run-once buttons", timer_count)
+
     async_add_entities(entities)
 
 
@@ -83,4 +92,62 @@ class DigitalStromUserActionButton(CoordinatorEntity, ButtonEntity):
             _LOGGER.error(
                 "Failed to trigger User Defined Action %s: %s",
                 self._action_name, err,
+            )
+
+
+class DigitalStromTimerRunOnceButton(CoordinatorEntity, ButtonEntity):
+    """Run a Configurator timer immediately, once.
+
+    Reads the timer's configured actions (zone-scene / device-scene) from
+    the dSS property tree and executes them through the standard scene
+    API — independent of the timer's enabled flag or scheduled time.
+    Enabling/disabling the timer itself stays in the dSS Configurator.
+    """
+
+    _attr_has_entity_name = True
+    _attr_icon = "mdi:timer-play-outline"
+
+    def __init__(
+        self,
+        coordinator: DigitalStromCoordinator,
+        event_id: str,
+        data: dict,
+    ) -> None:
+        super().__init__(coordinator)
+        self._event_id = event_id
+        dss_id = coordinator.dss_id
+        name = data.get("name", f"Timer {event_id}")
+        self._attr_unique_id = f"ds_{dss_id}_timer_runonce_{event_id}"
+        self._attr_name = f"Run {name}"
+        self._attr_device_info = {
+            "identifiers": {(DOMAIN, f"{dss_id}_apartment")},
+            "name": "Digital Strom Server",
+            "manufacturer": MANUFACTURER,
+            "model": "dSS",
+        }
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        data = self.coordinator.get_timed_event(self._event_id) or {}
+        attrs = {
+            "enabled_in_dss": data.get("enabled"),
+            "time_base": data.get("time_base"),
+            "offset_seconds": data.get("offset"),
+            "recurrence_base": data.get("recurrence_base"),
+            "timer_id": self._event_id,
+        }
+        if data.get("last_executed"):
+            attrs["last_executed"] = data["last_executed"]
+        return attrs
+
+    async def async_press(self) -> None:
+        try:
+            executed = await self.coordinator.run_timer_once(self._event_id)
+            _LOGGER.info(
+                "Timer %s executed %d action(s) on demand",
+                self._event_id, executed,
+            )
+        except DigitalStromApiError as err:
+            _LOGGER.error(
+                "Failed to run timer %s: %s", self._event_id, err,
             )

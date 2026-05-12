@@ -779,6 +779,47 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
             self._timed_events[event_id]["enabled"] = enabled
             self.async_update_listeners()
 
+    async def run_timer_once(self, event_id: str) -> int:
+        """Execute all configured actions of a timer immediately.
+
+        Returns the number of actions executed. Honours per-action delay
+        (in seconds). The timer's schedule and enabled state are not
+        touched — this is a one-off manual fire.
+        """
+        actions = await self.api.get_timer_actions(event_id)
+        executed = 0
+        for action in actions:
+            delay = action.get("delay", 0) or 0
+            if delay > 0:
+                await asyncio.sleep(delay)
+            atype = action.get("type")
+            try:
+                if atype == "zone-scene":
+                    await self.api.call_scene(
+                        int(action.get("zone", 0)),
+                        int(action.get("group", 1)),
+                        int(action.get("scene", 0)),
+                    )
+                elif atype == "device-scene":
+                    dsuid = action.get("dsuid")
+                    if dsuid:
+                        await self.api.device_call_scene(
+                            dsuid, int(action.get("scene", 0))
+                        )
+                else:
+                    _LOGGER.warning(
+                        "Timer %s: unsupported action type '%s' — skipped",
+                        event_id, atype,
+                    )
+                    continue
+                executed += 1
+            except DigitalStromApiError as err:
+                _LOGGER.error(
+                    "Timer %s action %s failed: %s",
+                    event_id, action.get("index"), err,
+                )
+        return executed
+
     @property
     def custom_states(self) -> dict[str, dict]:
         """Configurator-defined User Defined States."""

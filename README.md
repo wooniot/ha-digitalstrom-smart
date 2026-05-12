@@ -209,6 +209,12 @@ Home Assistant automatically uses the correct language based on your system lang
 
 ## Changelog
 
+### v2.10.9 (2026-05-12)
+- **Run-once timer button** — each Configurator timer now has a `button.run_<timer>` that fires its configured actions immediately, on demand. The button reads the timer's action list (zone-scene + device-scene) from the dSS property tree and replays it through the regular scene API
+- **Removed**: timer enable/disable switch. Toggling klokken on/off stays in the dSS Configurator as Rene requested — only the manual fire-once stays in HA
+- Per-action `delay` honoured when sequencing
+- Attributes on the run-once button: `enabled_in_dss`, `last_executed`, `time_base`, `offset_seconds`, `recurrence_base`, `timer_id`
+
 ### v2.10.8 (2026-05-12)
 - **Per-device output status** — every output-capable dS device (lights, shades, klimaat actuators) gets a diagnostic `binary_sensor.<device> status` showing whether the component is currently on. Sourced from `apartment/getDevices` web API only — no dS-bus polling, no extra HTTP-call (parsed from the existing 5-second device poll that already runs for binary inputs)
 - Joker devices keep their existing `switch` entity — no duplicates

@@ -745,6 +745,40 @@ class DigitalStromApi:
         path = f"/scripts/system-addon-timed-events/entries/{event_id}/conditions/enabled"
         await self.set_property_boolean(path, enabled)
 
+    async def device_call_scene(self, dsuid: str, scene: int) -> None:
+        """Call a scene on a single device (used by Configurator timers)."""
+        await self._request(
+            "/json/device/callScene",
+            {"dsuid": dsuid, "sceneNumber": scene, "force": "false"},
+        )
+
+    async def get_timer_actions(self, timer_id: str) -> list[dict]:
+        """Read the action sequence configured for a Configurator timer.
+
+        Returned list contains dicts with: type (zone-scene|device-scene),
+        zone/group/scene OR dsuid/scene, delay (seconds).
+        """
+        result = await self._request(
+            "/json/property/query2",
+            {"query": f"/scripts/system-addon-timed-events/entries/{timer_id}/actions/*(type,zone,group,scene,dsuid,delay)"},
+        )
+        actions: list[dict] = []
+        for key, entry in result.items():
+            if not isinstance(entry, dict) or not entry.get("type"):
+                continue
+            actions.append({
+                "index": key,
+                "type": entry.get("type"),
+                "zone": entry.get("zone"),
+                "group": entry.get("group"),
+                "scene": entry.get("scene"),
+                "dsuid": entry.get("dsuid"),
+                "delay": int(entry.get("delay", 0) or 0),
+            })
+        # Keep configured order by numeric index
+        actions.sort(key=lambda a: int(a.get("index", "0") or 0))
+        return actions
+
     async def get_timed_events(self) -> list[dict]:
         """Fetch dSS Timed Events (Configurator "Klokken" / scheduler).
 

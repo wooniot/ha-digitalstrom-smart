@@ -49,80 +49,10 @@ async def async_setup_entry(
                 DigitalStromAlarmSwitch(coordinator, scene_nr, name)
             )
 
-    # --- FREE: Configurator timer enable/disable switches ---
-    for tid, data in coordinator.timed_events.items():
-        entities.append(DigitalStromTimerSwitch(coordinator, tid, data))
+    # Configurator timers are exposed as run-once buttons (see button.py)
+    # rather than as switches: enabling/disabling klokken stays in the dSS.
 
     async_add_entities(entities)
-
-
-class DigitalStromTimerSwitch(CoordinatorEntity, SwitchEntity):
-    """A Configurator timer ("klok"): on = enabled, off = disabled.
-
-    Writes to ``/scripts/system-addon-timed-events/entries/<id>/conditions/enabled``
-    via the dSS property tree. Attributes expose the timer definition
-    (last execution, time base, offset seconds, recurrence) so a single
-    entity covers both viewing and switching.
-    """
-
-    _attr_has_entity_name = True
-    _attr_icon = "mdi:timer-outline"
-
-    def __init__(
-        self,
-        coordinator: DigitalStromCoordinator,
-        event_id: str,
-        data: dict,
-    ) -> None:
-        super().__init__(coordinator)
-        self._event_id = event_id
-        dss_id = coordinator.dss_id
-        self._attr_unique_id = f"ds_{dss_id}_timer_switch_{event_id}"
-        self._attr_name = data.get("name", f"Timer {event_id}")
-        self._attr_device_info = {
-            "identifiers": {(DOMAIN, f"{dss_id}_apartment")},
-            "name": "Digital Strom Server",
-            "manufacturer": MANUFACTURER,
-            "model": "dSS",
-        }
-
-    @property
-    def is_on(self) -> bool | None:
-        data = self.coordinator.get_timed_event(self._event_id)
-        if not data:
-            return None
-        return bool(data.get("enabled", True))
-
-    @property
-    def extra_state_attributes(self) -> dict:
-        data = self.coordinator.get_timed_event(self._event_id) or {}
-        attrs = {
-            "time_base": data.get("time_base"),
-            "offset_seconds": data.get("offset"),
-            "recurrence_base": data.get("recurrence_base"),
-            "timer_id": self._event_id,
-        }
-        last = data.get("last_executed")
-        if last:
-            # Pass through as ISO string so Lovelace can format it
-            attrs["last_executed"] = last
-        return attrs
-
-    async def async_turn_on(self, **_: object) -> None:
-        try:
-            await self.coordinator.set_timer_enabled(self._event_id, True)
-        except DigitalStromApiError as err:
-            _LOGGER.error("Failed to enable timer %s: %s", self._event_id, err)
-
-    async def async_turn_off(self, **_: object) -> None:
-        try:
-            await self.coordinator.set_timer_enabled(self._event_id, False)
-        except DigitalStromApiError as err:
-            _LOGGER.error("Failed to disable timer %s: %s", self._event_id, err)
-
-    @callback
-    def _handle_coordinator_update(self) -> None:
-        self.async_write_ha_state()
 
 
 class DigitalStromAlarmSwitch(CoordinatorEntity, SwitchEntity):
