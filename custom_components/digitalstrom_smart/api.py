@@ -690,30 +690,52 @@ class DigitalStromApi:
             })
         return items
 
-    async def get_custom_state_definitions(self) -> list[dict]:
-        """Fetch User Defined State definitions from the dSS Configurator addon.
+    # All User Defined State categories exposed by the Configurator addon
+    _UDS_CATEGORIES = (
+        "custom-states",
+        "combined-states",
+        "triggered-states",
+        "window-states",
+        "device-sensor-states",
+        "zone-sensor-states",
+    )
 
-        These are the entries the user creates in the Configurator under
-        *Activities > User Defined States* (the custom-states subtree of the
-        system-addon-user-defined-states script). Each item has:
-            id, name, setName, resetName, showOnPhone
-        Their *current value* lives in ``get_addon_states`` below.
+    async def get_custom_state_definitions(self) -> list[dict]:
+        """Fetch *all* User Defined State definitions from the Configurator addon.
+
+        Walks every category (custom, combined, triggered, window,
+        device-sensor, zone-sensor) and returns a unified list. For
+        sensor-based categories the ``lookup_key`` is the ``completeName``
+        because their runtime state in /usr/addon-states uses a longer
+        path-encoded id (e.g. ``dev.<dsuid>.type9.<id>``); for the other
+        categories the lookup key equals the numeric id.
         """
-        result = await self._request(
-            "/json/property/query2",
-            {"query": "/scripts/system-addon-user-defined-states/custom-states/*(id,name,setName,resetName,showOnPhone)"},
-        )
-        items = []
-        for _, entry in result.items():
-            if not isinstance(entry, dict) or not entry.get("id"):
+        items: list[dict] = []
+        for category in self._UDS_CATEGORIES:
+            try:
+                result = await self._request(
+                    "/json/property/query2",
+                    {"query": f"/scripts/system-addon-user-defined-states/{category}/*(id,name,setName,resetName,showOnPhone,completeName,activeValue,inactiveValue)"},
+                )
+            except DigitalStromApiError as err:
+                _LOGGER.debug("UDS category %s fetch failed: %s", category, err)
                 continue
-            items.append({
-                "id": str(entry["id"]),
-                "name": entry.get("name", ""),
-                "set_name": entry.get("setName", "Active"),
-                "reset_name": entry.get("resetName", "Inactive"),
-                "show_on_phone": bool(entry.get("showOnPhone", False)),
-            })
+            for _, entry in result.items():
+                if not isinstance(entry, dict) or not entry.get("id"):
+                    continue
+                sid = str(entry["id"])
+                complete_name = entry.get("completeName") or sid
+                items.append({
+                    "id": sid,
+                    "name": entry.get("name", ""),
+                    "set_name": entry.get("setName", "Active"),
+                    "reset_name": entry.get("resetName", "Inactive"),
+                    "show_on_phone": bool(entry.get("showOnPhone", False)),
+                    "category": category,
+                    "lookup_key": complete_name,
+                    "active_value": entry.get("activeValue"),
+                    "inactive_value": entry.get("inactiveValue"),
+                })
         return items
 
     async def set_property_boolean(self, path: str, value: bool) -> None:

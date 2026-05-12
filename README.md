@@ -209,6 +209,12 @@ Home Assistant automatically uses the correct language based on your system lang
 
 ## Changelog
 
+### v2.10.6 (2026-05-12)
+- **Full coverage of User Defined States** — v2.10.3 only imported `custom-states`. This release adds the five remaining categories: `combined-states`, `triggered-states`, `window-states`, `device-sensor-states`, `zone-sensor-states`. Examples: "Melder meeting", "Heater", "Roldeur open", "Warmtevraag", "Vorstbeveiliging 8-10gr.", "Oververhitting"
+- Sensor-threshold based states (device/zone sensor) join their runtime value via `completeName` (e.g. `dev.<dsuid>.type9.<id>` or `zone.zoneN.groupX.type9.<id>`) instead of the numeric id
+- New attributes on each binary_sensor: `category`, `active_value`, `inactive_value` (for sensor-threshold states)
+- stateChange events now match on either the state id or its `completeName` lookup key
+
 ### v2.10.5 (2026-05-12)
 - **Timer enable/disable switch** — each imported timer also gets a `switch` entity that writes to `/scripts/system-addon-timed-events/entries/<id>/conditions/enabled` via the dSS property tree. Toggle a klok on or off from Home Assistant without opening the Configurator
 - `set_timer_enabled()` coordinator helper + `api.set_property_boolean()` for general boolean property writes

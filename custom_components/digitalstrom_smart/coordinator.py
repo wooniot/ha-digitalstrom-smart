@@ -506,9 +506,11 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
             _LOGGER.debug("Addon states fetch failed: %s", err)
             states = {}
         merged: dict[str, dict] = {}
+        by_category: dict[str, int] = {}
         for d in definitions:
             sid = d["id"]
-            runtime = states.get(sid, {})
+            lookup_key = d.get("lookup_key", sid)
+            runtime = states.get(lookup_key, {}) or states.get(sid, {})
             merged[sid] = {
                 "id": sid,
                 "name": d["name"] or f"State {sid}",
@@ -516,11 +518,17 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
                 "reset_name": d["reset_name"],
                 "state": runtime.get("state", ""),
                 "value": runtime.get("value"),
+                "category": d.get("category", "custom-states"),
+                "lookup_key": lookup_key,
+                "active_value": d.get("active_value"),
+                "inactive_value": d.get("inactive_value"),
             }
+            by_category[d.get("category", "?")] = by_category.get(d.get("category", "?"), 0) + 1
         self._custom_states = merged
         _LOGGER.info(
-            "Configurator User Defined States: %d imported",
+            "Configurator User Defined States: %d imported (%s)",
             len(merged),
+            ", ".join(f"{c}={n}" for c, n in by_category.items()),
         )
 
     async def fetch_user_states(self) -> None:
@@ -768,6 +776,15 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
         if state_id in self._custom_states:
             self._custom_states[state_id]["state"] = state
             self._custom_states[state_id]["value"] = value
+
+    def _find_custom_state_by_key(self, key: str) -> str | None:
+        """Return the state id whose id OR lookup_key matches the given key."""
+        if key in self._custom_states:
+            return key
+        for sid, data in self._custom_states.items():
+            if data.get("lookup_key") == key:
+                return sid
+        return None
 
     def friendly_state_name(self, state_name: str) -> str:
         """Render a human-readable name for a dSS state.
@@ -1077,18 +1094,19 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
                         state_value, self._heating_system_cooling,
                     )
                     self.async_update_listeners()
-            elif state_name and state_name in self._custom_states:
-                # Configurator User Defined State change
+            elif state_name and self._find_custom_state_by_key(state_name):
+                # Configurator User Defined State change — match on id OR lookup_key
+                matched_id = self._find_custom_state_by_key(state_name)
                 state_str = state_value.lower() if isinstance(state_value, str) else str(state_value)
-                value_norm: int | str | None = state_str
+                value_norm: int | None = None
                 if state_str in ("active", "1"):
                     value_norm = STATE_VALUE_ACTIVE
                 elif state_str in ("inactive", "2"):
                     value_norm = 2
-                self.update_custom_state_runtime(state_name, str(state_value), value_norm if isinstance(value_norm, int) else None)
+                self.update_custom_state_runtime(matched_id, str(state_value), value_norm)
                 _LOGGER.debug(
-                    "Custom state change: %s = %s",
-                    state_name, state_value,
+                    "Custom state change: %s (%s) = %s",
+                    state_name, matched_id, state_value,
                 )
                 self.async_update_listeners()
             elif state_name and state_name in self._user_states:

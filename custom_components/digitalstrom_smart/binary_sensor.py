@@ -336,11 +336,17 @@ class DigitalStromCustomState(CoordinatorEntity, BinarySensorEntity):
     @property
     def extra_state_attributes(self) -> dict:
         data = self.coordinator.get_custom_state(self._state_id) or {}
-        return {
+        attrs = {
             "set_name": data.get("set_name"),
             "reset_name": data.get("reset_name"),
             "state_id": self._state_id,
+            "category": data.get("category"),
         }
+        # Sensor-threshold based states also expose their threshold expressions
+        if data.get("active_value") or data.get("inactive_value"):
+            attrs["active_value"] = data.get("active_value")
+            attrs["inactive_value"] = data.get("inactive_value")
+        return attrs
 
     @callback
     def _handle_coordinator_update(self) -> None:
