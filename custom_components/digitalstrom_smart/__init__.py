@@ -118,6 +118,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         await coordinator.fetch_user_states()
     except Exception as err:
         _LOGGER.warning("User states fetch failed (non-fatal): %s", err)
+    try:
+        await coordinator.fetch_custom_states()
+    except Exception as err:
+        _LOGGER.warning("Custom states fetch failed (non-fatal): %s", err)
 
     # Pro: fetch climate, sensor, and apartment state data
     if coordinator.pro_enabled:

@@ -690,6 +690,54 @@ class DigitalStromApi:
             })
         return items
 
+    async def get_custom_state_definitions(self) -> list[dict]:
+        """Fetch User Defined State definitions from the dSS Configurator addon.
+
+        These are the entries the user creates in the Configurator under
+        *Activities > User Defined States* (the custom-states subtree of the
+        system-addon-user-defined-states script). Each item has:
+            id, name, setName, resetName, showOnPhone
+        Their *current value* lives in ``get_addon_states`` below.
+        """
+        result = await self._request(
+            "/json/property/query2",
+            {"query": "/scripts/system-addon-user-defined-states/custom-states/*(id,name,setName,resetName,showOnPhone)"},
+        )
+        items = []
+        for _, entry in result.items():
+            if not isinstance(entry, dict) or not entry.get("id"):
+                continue
+            items.append({
+                "id": str(entry["id"]),
+                "name": entry.get("name", ""),
+                "set_name": entry.get("setName", "Active"),
+                "reset_name": entry.get("resetName", "Inactive"),
+                "show_on_phone": bool(entry.get("showOnPhone", False)),
+            })
+        return items
+
+    async def get_addon_states(self, addon: str = "system-addon-user-defined-states") -> dict[str, dict]:
+        """Fetch the runtime state of a script addon from /usr/addon-states.
+
+        Returns ``{name: {"state": str, "value": int|str}}``. For custom user
+        defined states the ``name`` equals the state id used to cross-reference
+        with :meth:`get_custom_state_definitions`.
+        """
+        result = await self._request(
+            "/json/property/query2",
+            {"query": f"/usr/addon-states/{addon}/*(name,state,value)"},
+        )
+        items: dict[str, dict] = {}
+        for key, entry in result.items():
+            if not isinstance(entry, dict):
+                continue
+            name = entry.get("name", key)
+            items[name] = {
+                "state": entry.get("state", ""),
+                "value": entry.get("value"),
+            }
+        return items
+
     async def get_state_value(self, name: str) -> dict:
         """Get the current value of a named state. Returns {value: ...}."""
         try:

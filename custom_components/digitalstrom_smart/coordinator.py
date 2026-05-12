@@ -117,6 +117,9 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
         # User Defined Actions & States (apartment automation primitives)
         self._user_actions: list[dict] = []   # [{"id", "name", "source", "disabled"}]
         self._user_states: dict[str, dict] = {}   # name -> {"state", "value"}
+        # Configurator-defined custom states (the "real" user defined states)
+        # id -> {"name", "set_name", "reset_name", "state", "value"}
+        self._custom_states: dict[str, dict] = {}
 
         # Parse structure into zones and devices
         self.zones: dict[int, dict] = {}
@@ -466,6 +469,44 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
             len(unique), len(raw),
         )
 
+    async def fetch_custom_states(self) -> None:
+        """Fetch User Defined States created in the dSS Configurator.
+
+        These are the entries shown under *Activities > User Defined States*
+        in the Configurator. Their definitions (display name, set/reset
+        labels) live in a script subtree; their current value comes from the
+        addon-states subtree. We join them on the state id.
+        """
+        try:
+            definitions = await self.api.get_custom_state_definitions()
+        except DigitalStromApiError as err:
+            _LOGGER.debug("Custom state definitions fetch failed: %s", err)
+            return
+        try:
+            states = await self.api.get_addon_states(
+                "system-addon-user-defined-states"
+            )
+        except DigitalStromApiError as err:
+            _LOGGER.debug("Addon states fetch failed: %s", err)
+            states = {}
+        merged: dict[str, dict] = {}
+        for d in definitions:
+            sid = d["id"]
+            runtime = states.get(sid, {})
+            merged[sid] = {
+                "id": sid,
+                "name": d["name"] or f"State {sid}",
+                "set_name": d["set_name"],
+                "reset_name": d["reset_name"],
+                "state": runtime.get("state", ""),
+                "value": runtime.get("value"),
+            }
+        self._custom_states = merged
+        _LOGGER.info(
+            "Configurator User Defined States: %d imported",
+            len(merged),
+        )
+
     async def fetch_user_states(self) -> None:
         """Fetch User Defined / apartment-wide states from dSS — sensors in HA.
 
@@ -680,6 +721,22 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
 
     def get_user_state(self, name: str) -> dict | None:
         return self._user_states.get(name)
+
+    @property
+    def custom_states(self) -> dict[str, dict]:
+        """Configurator-defined User Defined States."""
+        return self._custom_states
+
+    def get_custom_state(self, state_id: str) -> dict | None:
+        return self._custom_states.get(state_id)
+
+    def update_custom_state_runtime(
+        self, state_id: str, state: str, value: int | None,
+    ) -> None:
+        """Update the runtime state/value of a custom state (called from events)."""
+        if state_id in self._custom_states:
+            self._custom_states[state_id]["state"] = state
+            self._custom_states[state_id]["value"] = value
 
     def friendly_state_name(self, state_name: str) -> str:
         """Render a human-readable name for a dSS state.
@@ -989,6 +1046,20 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
                         state_value, self._heating_system_cooling,
                     )
                     self.async_update_listeners()
+            elif state_name and state_name in self._custom_states:
+                # Configurator User Defined State change
+                state_str = state_value.lower() if isinstance(state_value, str) else str(state_value)
+                value_norm: int | str | None = state_str
+                if state_str in ("active", "1"):
+                    value_norm = STATE_VALUE_ACTIVE
+                elif state_str in ("inactive", "2"):
+                    value_norm = 2
+                self.update_custom_state_runtime(state_name, str(state_value), value_norm if isinstance(value_norm, int) else None)
+                _LOGGER.debug(
+                    "Custom state change: %s = %s",
+                    state_name, state_value,
+                )
+                self.async_update_listeners()
             elif state_name and state_name in self._user_states:
                 # User Defined / apartment-wide state change (named state, no dsuid)
                 new_val = state_value

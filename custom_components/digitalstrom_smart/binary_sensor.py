@@ -118,6 +118,10 @@ async def async_setup_entry(
         if _is_binary_state(data):
             entities.append(DigitalStromUserBinaryState(coordinator, name))
 
+    # --- FREE: Configurator User Defined States (custom-states with proper names) ---
+    for sid, data in coordinator.custom_states.items():
+        entities.append(DigitalStromCustomState(coordinator, sid, data))
+
     async_add_entities(entities)
 
 
@@ -278,6 +282,65 @@ class DigitalStromUserBinaryState(CoordinatorEntity, BinarySensorEntity):
         if value == 2:
             return False
         return None
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        self.async_write_ha_state()
+
+
+class DigitalStromCustomState(CoordinatorEntity, BinarySensorEntity):
+    """A User Defined State created in the dSS Configurator.
+
+    Display name comes from the Configurator (e.g. "Schoonmaak"). The
+    runtime value follows the addon-state with active=on, inactive=off.
+    """
+
+    _attr_has_entity_name = True
+    _attr_icon = "mdi:state-machine"
+
+    def __init__(
+        self,
+        coordinator: DigitalStromCoordinator,
+        state_id: str,
+        data: dict,
+    ) -> None:
+        super().__init__(coordinator)
+        self._state_id = state_id
+        dss_id = coordinator.dss_id
+        self._attr_unique_id = f"ds_{dss_id}_customstate_{state_id}"
+        self._attr_name = data.get("name", f"State {state_id}")
+        self._attr_device_info = {
+            "identifiers": {(DOMAIN, f"{dss_id}_apartment")},
+            "name": "Digital Strom Server",
+            "manufacturer": MANUFACTURER,
+            "model": "dSS",
+        }
+
+    @property
+    def is_on(self) -> bool | None:
+        data = self.coordinator.get_custom_state(self._state_id)
+        if not data:
+            return None
+        state = str(data.get("state", "")).lower()
+        if state == "active":
+            return True
+        if state == "inactive":
+            return False
+        value = data.get("value")
+        if value == 1:
+            return True
+        if value == 2:
+            return False
+        return None
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        data = self.coordinator.get_custom_state(self._state_id) or {}
+        return {
+            "set_name": data.get("set_name"),
+            "reset_name": data.get("reset_name"),
+            "state_id": self._state_id,
+        }
 
     @callback
     def _handle_coordinator_update(self) -> None:

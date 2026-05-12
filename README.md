@@ -209,6 +209,12 @@ Home Assistant automatically uses the correct language based on your system lang
 
 ## Changelog
 
+### v2.10.3 (2026-05-12)
+- **Configurator User Defined States** — states created in the dSS Configurator (*Activities > User Defined States*) are now imported as `binary_sensor` entities with their human-readable name ("Schoonmaak", "Vitrage was dicht", …). The previous v2.10.x release only imported `/usr/states/` which contains zone/device/system states but not the custom user definitions
+- Runtime values come from `/usr/addon-states/system-addon-user-defined-states/<id>`, names from `/scripts/system-addon-user-defined-states/custom-states/<id>` — joined on state id
+- State changes propagate live via the existing `stateChange` event subscription
+- Each entity exposes `set_name` and `reset_name` (the labels the user configured) as attributes
+
 ### v2.10.2 (2026-05-12)
 - **Brand assets** — icon and logo bundled at `custom_components/digitalstrom_smart/brand/` so the integration meets the HACS default-repository requirements (since HA 2026.3 custom integrations ship their own brand assets instead of the `home-assistant/brands` repo)
 
