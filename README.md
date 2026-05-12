@@ -209,6 +209,9 @@ Home Assistant automatically uses the correct language based on your system lang
 
 ## Changelog
 
+### v2.10.2 (2026-05-12)
+- **Brand assets** — icon and logo bundled at `custom_components/digitalstrom_smart/brand/` so the integration meets the HACS default-repository requirements (since HA 2026.3 custom integrations ship their own brand assets instead of the `home-assistant/brands` repo)
+
 ### v2.10.1 (2026-05-12)
 - **User Defined Action trigger fix** — pressing a button now raises `highlevelevent` with `id=<UDA_id>` as parameter, the event pattern the dSS UDA addon actually subscribes to (the old `event/raise?name=<UDA_id>` only acknowledged the event but never executed the action)
 - **Friendly names for device-bound states** — states named like `dev.<dsuid>.status.playbacktype` now show as `<Device Name> Playbacktype` instead of the raw dSUID
