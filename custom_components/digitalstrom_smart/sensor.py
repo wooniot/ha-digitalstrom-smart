@@ -212,6 +212,10 @@ async def async_setup_entry(
             continue
         entities.append(DigitalStromUserStateSensor(coordinator, name))
 
+    # --- FREE: Configurator timers / klokken ---
+    for tid, data in coordinator.timed_events.items():
+        entities.append(DigitalStromTimedEventSensor(coordinator, tid, data))
+
     async_add_entities(entities)
 
 
@@ -616,6 +620,70 @@ class DigitalStromApartmentEnergySensor(CoordinatorEntity, SensorEntity):
     @property
     def native_value(self) -> float | None:
         return self.coordinator.apartment_energy_kwh
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        self.async_write_ha_state()
+
+
+class DigitalStromTimedEventSensor(CoordinatorEntity, SensorEntity):
+    """A dSS Timed Event (Configurator timer / klok).
+
+    State = last execution timestamp (``device_class=timestamp``). Attributes
+    expose the timer definition (timeBase, offset seconds, recurrence,
+    enabled) so it can be displayed or used in automations.
+    """
+
+    _attr_has_entity_name = True
+    _attr_device_class = SensorDeviceClass.TIMESTAMP
+    _attr_icon = "mdi:timer-outline"
+
+    def __init__(
+        self,
+        coordinator: DigitalStromCoordinator,
+        event_id: str,
+        data: dict,
+    ) -> None:
+        super().__init__(coordinator)
+        self._event_id = event_id
+        dss_id = coordinator.dss_id
+        self._attr_unique_id = f"ds_{dss_id}_timer_{event_id}"
+        self._attr_name = data.get("name", f"Timer {event_id}")
+        self._attr_device_info = {
+            "identifiers": {(DOMAIN, f"{dss_id}_apartment")},
+            "name": "Digital Strom Server",
+            "manufacturer": MANUFACTURER,
+            "model": "dSS",
+        }
+
+    @property
+    def native_value(self):
+        """Return the last execution as a timezone-aware datetime."""
+        data = self.coordinator.get_timed_event(self._event_id)
+        if not data:
+            return None
+        raw = data.get("last_executed")
+        if not raw:
+            return None
+        from datetime import datetime, timezone
+        try:
+            # dSS reports local time without TZ ("2026-05-12 06:23:29")
+            dt = datetime.strptime(raw, "%Y-%m-%d %H:%M:%S")
+            # Treat as the dSS' local time; HA will normalise to UTC for storage
+            return dt.replace(tzinfo=timezone.utc)
+        except (ValueError, TypeError):
+            return None
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        data = self.coordinator.get_timed_event(self._event_id) or {}
+        return {
+            "enabled": data.get("enabled", True),
+            "time_base": data.get("time_base"),
+            "offset_seconds": data.get("offset"),
+            "recurrence_base": data.get("recurrence_base"),
+            "timer_id": self._event_id,
+        }
 
     @callback
     def _handle_coordinator_update(self) -> None:

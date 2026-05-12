@@ -120,6 +120,9 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
         # Configurator-defined custom states (the "real" user defined states)
         # id -> {"name", "set_name", "reset_name", "state", "value"}
         self._custom_states: dict[str, dict] = {}
+        # Configurator timers / "klokken" (system-addon-timed-events)
+        # id -> {"name", "last_executed", "enabled", "time_base", "offset", ...}
+        self._timed_events: dict[str, dict] = {}
 
         # Parse structure into zones and devices
         self.zones: dict[int, dict] = {}
@@ -469,6 +472,19 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
             len(unique), len(raw),
         )
 
+    async def fetch_timed_events(self) -> None:
+        """Fetch dSS Timed Events (Configurator timers / klokken)."""
+        try:
+            entries = await self.api.get_timed_events()
+        except DigitalStromApiError as err:
+            _LOGGER.debug("Timed events fetch failed: %s", err)
+            return
+        self._timed_events = {e["id"]: e for e in entries}
+        _LOGGER.info(
+            "Configurator timers: %d imported",
+            len(self._timed_events),
+        )
+
     async def fetch_custom_states(self) -> None:
         """Fetch User Defined States created in the dSS Configurator.
 
@@ -721,6 +737,14 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
 
     def get_user_state(self, name: str) -> dict | None:
         return self._user_states.get(name)
+
+    @property
+    def timed_events(self) -> dict[str, dict]:
+        """Configurator timers / klokken."""
+        return self._timed_events
+
+    def get_timed_event(self, event_id: str) -> dict | None:
+        return self._timed_events.get(event_id)
 
     @property
     def custom_states(self) -> dict[str, dict]:

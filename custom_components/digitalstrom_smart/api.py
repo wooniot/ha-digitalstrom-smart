@@ -716,6 +716,36 @@ class DigitalStromApi:
             })
         return items
 
+    async def get_timed_events(self) -> list[dict]:
+        """Fetch dSS Timed Events (Configurator "Klokken" / scheduler).
+
+        Each entry has: id, name, time {timeBase, offset, recurrenceBase},
+        conditions {enabled}, lastExecuted (optional ISO datetime string),
+        deleteCounter (>0 means soft-deleted).
+        """
+        result = await self._request(
+            "/json/property/query2",
+            {"query": "/scripts/system-addon-timed-events/entries/*(id,name,lastExecuted,deleteCounter)/time(timeBase,offset,recurrenceBase)/conditions(enabled)"},
+        )
+        items: list[dict] = []
+        for key, entry in result.items():
+            if not isinstance(entry, dict):
+                continue
+            if entry.get("deleteCounter", 0) and int(entry.get("deleteCounter", 0)) > 0:
+                continue
+            time_info = entry.get("time", {}) if isinstance(entry.get("time"), dict) else {}
+            cond = entry.get("conditions", {}) if isinstance(entry.get("conditions"), dict) else {}
+            items.append({
+                "id": str(entry.get("id", key)),
+                "name": entry.get("name", f"Timer {key}"),
+                "last_executed": entry.get("lastExecuted"),
+                "enabled": bool(cond.get("enabled", True)),
+                "time_base": time_info.get("timeBase", ""),
+                "offset": int(time_info.get("offset", 0) or 0),
+                "recurrence_base": time_info.get("recurrenceBase", ""),
+            })
+        return items
+
     async def get_addon_states(self, addon: str = "system-addon-user-defined-states") -> dict[str, dict]:
         """Fetch the runtime state of a script addon from /usr/addon-states.
 
