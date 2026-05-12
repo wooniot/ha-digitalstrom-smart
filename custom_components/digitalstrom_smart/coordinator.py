@@ -746,6 +746,13 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
     def get_timed_event(self, event_id: str) -> dict | None:
         return self._timed_events.get(event_id)
 
+    async def set_timer_enabled(self, event_id: str, enabled: bool) -> None:
+        """Toggle a Configurator timer on/off and update the local cache."""
+        await self.api.set_timed_event_enabled(event_id, enabled)
+        if event_id in self._timed_events:
+            self._timed_events[event_id]["enabled"] = enabled
+            self.async_update_listeners()
+
     @property
     def custom_states(self) -> dict[str, dict]:
         """Configurator-defined User Defined States."""

@@ -716,6 +716,18 @@ class DigitalStromApi:
             })
         return items
 
+    async def set_property_boolean(self, path: str, value: bool) -> None:
+        """Set a boolean property in the dSS property tree."""
+        await self._request(
+            "/json/property/setBoolean",
+            {"path": path, "value": "true" if value else "false"},
+        )
+
+    async def set_timed_event_enabled(self, event_id: str, enabled: bool) -> None:
+        """Enable or disable a Configurator timer ("klok")."""
+        path = f"/scripts/system-addon-timed-events/entries/{event_id}/conditions/enabled"
+        await self.set_property_boolean(path, enabled)
+
     async def get_timed_events(self) -> list[dict]:
         """Fetch dSS Timed Events (Configurator "Klokken" / scheduler).
 

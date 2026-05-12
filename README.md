@@ -209,6 +209,10 @@ Home Assistant automatically uses the correct language based on your system lang
 
 ## Changelog
 
+### v2.10.5 (2026-05-12)
+- **Timer enable/disable switch** — each imported timer also gets a `switch` entity that writes to `/scripts/system-addon-timed-events/entries/<id>/conditions/enabled` via the dSS property tree. Toggle a klok on or off from Home Assistant without opening the Configurator
+- `set_timer_enabled()` coordinator helper + `api.set_property_boolean()` for general boolean property writes
+
 ### v2.10.4 (2026-05-12)
 - **Timers / Klokken import** — every Timed Event from the dSS Configurator (sunset/sunrise/dawn/daily timers) is imported as a `sensor` with `device_class=timestamp`, value = `lastExecuted`. Attributes: `enabled`, `time_base` (sunset/sunrise/daily/…), `offset_seconds`, `recurrence_base`, `timer_id`
 - Source: `/scripts/system-addon-timed-events/entries/*`
