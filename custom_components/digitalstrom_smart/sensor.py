@@ -636,10 +636,10 @@ class DigitalStromUserStateSensor(CoordinatorEntity, SensorEntity):
         super().__init__(coordinator)
         self._state_name = state_name
         dss_id = coordinator.dss_id
-        # Sanitize state name for unique_id
+        # Sanitize state name for unique_id (stable across renames in dSS)
         safe = state_name.replace(".", "_").replace(" ", "_")
         self._attr_unique_id = f"ds_{dss_id}_userstate_{safe}"
-        self._attr_name = state_name
+        self._attr_name = coordinator.friendly_state_name(state_name)
         self._attr_device_info = {
             "identifiers": {(DOMAIN, f"{dss_id}_apartment")},
             "name": "Digital Strom Server",

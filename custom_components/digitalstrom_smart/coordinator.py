@@ -681,6 +681,24 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
     def get_user_state(self, name: str) -> dict | None:
         return self._user_states.get(name)
 
+    def friendly_state_name(self, state_name: str) -> str:
+        """Render a human-readable name for a dSS state.
+
+        ``dev.<dsuid>.status.<thing>`` and ``dev.<dsuid>.<thing>`` states are
+        per-device states. We look up the device name from the structure and
+        suffix the trailing component, e.g.
+        ``dev.22cc..78271b174f00.status.playbacktype`` →
+        ``Sonos Living PlaybackType``.
+        """
+        parts = state_name.split(".")
+        if len(parts) >= 3 and parts[0] == "dev":
+            dsuid = parts[1]
+            dev = self.devices.get(dsuid)
+            if dev and dev.get("name"):
+                suffix = parts[-1].replace("_", " ").title()
+                return f"{dev['name']} {suffix}"
+        return state_name
+
     def get_device_sensor_value(self, dsuid: str, sensor_type: int) -> float | None:
         """Get a device sensor value by type."""
         return self._device_sensor_values.get(dsuid, {}).get(sensor_type)

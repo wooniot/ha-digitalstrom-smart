@@ -254,7 +254,7 @@ class DigitalStromUserBinaryState(CoordinatorEntity, BinarySensorEntity):
         dss_id = coordinator.dss_id
         safe = state_name.replace(".", "_").replace(" ", "_")
         self._attr_unique_id = f"ds_{dss_id}_userstate_{safe}"
-        self._attr_name = state_name
+        self._attr_name = coordinator.friendly_state_name(state_name)
         self._attr_device_info = {
             "identifiers": {(DOMAIN, f"{dss_id}_apartment")},
             "name": "Digital Strom Server",

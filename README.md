@@ -209,6 +209,10 @@ Home Assistant automatically uses the correct language based on your system lang
 
 ## Changelog
 
+### v2.10.1 (2026-05-12)
+- **User Defined Action trigger fix** — pressing a button now raises `highlevelevent` with `id=<UDA_id>` as parameter, the event pattern the dSS UDA addon actually subscribes to (the old `event/raise?name=<UDA_id>` only acknowledged the event but never executed the action)
+- **Friendly names for device-bound states** — states named like `dev.<dsuid>.status.playbacktype` now show as `<Device Name> Playbacktype` instead of the raw dSUID
+
 ### v2.10.0 (2026-05-12)
 - **Energy Dashboard support** — every dSM (group) now reports cumulative energy in kWh with `device_class=energy` and `state_class=total_increasing`, so circuits show up in the HA Energy Dashboard out of the box
 - **Apartment-wide kWh sensor** — aggregated lifetime energy across all dSMs (`sensor.dss_energy_consumption`)

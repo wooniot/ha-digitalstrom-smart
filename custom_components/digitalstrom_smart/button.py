@@ -63,9 +63,18 @@ class DigitalStromUserActionButton(CoordinatorEntity, ButtonEntity):
         }
 
     async def async_press(self) -> None:
-        """Raise the dSS event that triggers this User Defined Action."""
+        """Trigger this User Defined Action on the dSS.
+
+        The dSS "system-addon-user-defined-actions" script subscribes to the
+        ``highlevelevent`` system event and runs the action whose id matches
+        the ``id`` parameter — raising the event with the action id as a plain
+        event name does NOT execute the configured actions.
+        """
         try:
-            await self.coordinator.api.raise_event(self._action_id)
+            await self.coordinator.api.raise_event(
+                "highlevelevent",
+                parameter=f"id={self._action_id}",
+            )
             _LOGGER.debug(
                 "Triggered User Defined Action %s (%s)",
                 self._action_id, self._action_name,
