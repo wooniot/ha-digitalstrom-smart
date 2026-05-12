@@ -209,6 +209,30 @@ Home Assistant automatically uses the correct language based on your system lang
 
 ## Changelog
 
+### v3.0.0 (2026-05-12) — Major release
+
+This is the 2.10.x development cycle rolled up into a single major release. Highlights versus 2.9.x:
+
+**Energy Dashboard**
+- Per-dSM (group) cumulative kWh sensor with `state_class=total_increasing`
+- Apartment-wide kWh sensor as the sum of all dSMs
+- Existing instantaneous Watt sensors retained
+
+**dSS Configurator entities**
+- *User Defined Actions* → HA buttons (raise the addon's `highlevelevent` with `id=<action>` parameter)
+- *User Defined States* → binary_sensor / sensor entities, joined from all six addon categories (custom / combined / triggered / window / device-sensor / zone-sensor)
+- *Klokken / Timers* → one button per timer to fire its configured actions on demand (zone-scene + device-scene sequenced with per-action delay)
+
+**Per-component status**
+- Every output-capable non-Joker device gets a diagnostic `binary_sensor` exposing its current `on` state from `apartment/getDevices` — no dS-bus traffic, single shared HTTP poll
+
+**Hardening (from GPT-4o code review)**
+- `asyncio.TimeoutError` now mapped to `DigitalStromApiError` in the request layer
+- Background event-listener startup wrapped in a `try/except` so a crash is logged instead of silently lost
+- Binary poll loop logs full traceback on unexpected exceptions
+
+**Brand assets** — bundled in repo under `custom_components/digitalstrom_smart/brand/` so HACS default-repository validation passes (HA 2026.3+).
+
 ### v2.10.9 (2026-05-12)
 - **Run-once timer button** — each Configurator timer now has a `button.run_<timer>` that fires its configured actions immediately, on demand. The button reads the timer's action list (zone-scene + device-scene) from the dSS property tree and replays it through the regular scene API
 - **Removed**: timer enable/disable switch. Toggling klokken on/off stays in the dSS Configurator as Rene requested — only the manual fire-once stays in HA

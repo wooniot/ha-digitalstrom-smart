@@ -1000,8 +1000,8 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
             except asyncio.CancelledError:
                 _LOGGER.info("Binary poll loop STOPPED")
                 return
-            except Exception as err:
-                _LOGGER.warning("Binary poll loop error: %s", err)
+            except Exception:  # pylint: disable=broad-except
+                _LOGGER.exception("Binary poll loop error — keeping loop alive")
                 await asyncio.sleep(POLL_INTERVAL_BINARY)
 
     async def _event_loop(self) -> None:

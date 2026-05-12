@@ -134,7 +134,14 @@ class DigitalStromApi:
     async def _cloud_get(
         self, url: str, params: dict | None = None, timeout_val: int = 15,
     ) -> tuple[int, Any]:
-        """Execute GET with HTTP Digest auth + CSRF for cloud."""
+        """Execute GET with HTTP Digest auth + CSRF for cloud.
+
+        Returns (status, body). Transport-level failures (aiohttp errors,
+        timeout) are raised as :class:`DigitalStromApiError` so callers
+        get a consistent exception type — see the wrapping in
+        :meth:`_cloud_get_safe` below; this private inner method handles
+        the actual HTTP roundtrip.
+        """
         if params is None:
             params = {}
 
@@ -228,6 +235,8 @@ class DigitalStromApi:
 
             return data.get("result", data)
 
+        except asyncio.TimeoutError as err:
+            raise DigitalStromApiError(f"Timeout calling {endpoint}") from err
         except aiohttp.ClientError as err:
             raise DigitalStromApiError(f"Connection error: {err}") from err
 
