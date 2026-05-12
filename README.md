@@ -209,6 +209,11 @@ Home Assistant automatically uses the correct language based on your system lang
 
 ## Changelog
 
+### v2.10.7 (2026-05-12)
+- **One entity per timer** — the separate `sensor.<timer>` is gone; only the `switch.<timer>` remains. The switch state shows whether the timer is enabled, and the `last_executed` timestamp is now an attribute on the switch alongside `time_base`, `offset_seconds`, `recurrence_base` and `timer_id`
+- All timers (enabled and disabled) appear as switches; toggling the switch updates the dSS via `property/setBoolean`
+- **Migration note**: the old `sensor.<timer>` entities (from v2.10.4-v2.10.6) become orphaned in HA's entity registry. Either delete them manually under *Settings > Devices & Services > Entities*, or leave them — they'll be cleaned up automatically when the integration is reloaded once
+
 ### v2.10.6 (2026-05-12)
 - **Full coverage of User Defined States** — v2.10.3 only imported `custom-states`. This release adds the five remaining categories: `combined-states`, `triggered-states`, `window-states`, `device-sensor-states`, `zone-sensor-states`. Examples: "Melder meeting", "Heater", "Roldeur open", "Warmtevraag", "Vorstbeveiliging 8-10gr.", "Oververhitting"
 - Sensor-threshold based states (device/zone sensor) join their runtime value via `completeName` (e.g. `dev.<dsuid>.type9.<id>` or `zone.zoneN.groupX.type9.<id>`) instead of the numeric id

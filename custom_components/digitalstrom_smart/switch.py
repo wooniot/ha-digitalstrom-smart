@@ -57,15 +57,16 @@ async def async_setup_entry(
 
 
 class DigitalStromTimerSwitch(CoordinatorEntity, SwitchEntity):
-    """Enable/disable a Configurator timer ("klok").
+    """A Configurator timer ("klok"): on = enabled, off = disabled.
 
     Writes to ``/scripts/system-addon-timed-events/entries/<id>/conditions/enabled``
-    via the dSS property tree. State mirrors the cached ``enabled`` flag from
-    the coordinator and is updated optimistically after a successful write.
+    via the dSS property tree. Attributes expose the timer definition
+    (last execution, time base, offset seconds, recurrence) so a single
+    entity covers both viewing and switching.
     """
 
     _attr_has_entity_name = True
-    _attr_icon = "mdi:timer-cog-outline"
+    _attr_icon = "mdi:timer-outline"
 
     def __init__(
         self,
@@ -77,7 +78,7 @@ class DigitalStromTimerSwitch(CoordinatorEntity, SwitchEntity):
         self._event_id = event_id
         dss_id = coordinator.dss_id
         self._attr_unique_id = f"ds_{dss_id}_timer_switch_{event_id}"
-        self._attr_name = f"{data.get('name', f'Timer {event_id}')} (timer)"
+        self._attr_name = data.get("name", f"Timer {event_id}")
         self._attr_device_info = {
             "identifiers": {(DOMAIN, f"{dss_id}_apartment")},
             "name": "Digital Strom Server",
@@ -91,6 +92,21 @@ class DigitalStromTimerSwitch(CoordinatorEntity, SwitchEntity):
         if not data:
             return None
         return bool(data.get("enabled", True))
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        data = self.coordinator.get_timed_event(self._event_id) or {}
+        attrs = {
+            "time_base": data.get("time_base"),
+            "offset_seconds": data.get("offset"),
+            "recurrence_base": data.get("recurrence_base"),
+            "timer_id": self._event_id,
+        }
+        last = data.get("last_executed")
+        if last:
+            # Pass through as ISO string so Lovelace can format it
+            attrs["last_executed"] = last
+        return attrs
 
     async def async_turn_on(self, **_: object) -> None:
         try:
