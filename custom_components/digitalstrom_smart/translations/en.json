@@ -58,6 +58,7 @@
       "air_pressure": { "name": "Air Pressure" },
       "rain_intensity": { "name": "Rain" },
       "device_power": { "name": "Power" },
+      "device_energy": { "name": "Energy" },
       "device_temperature": { "name": "Temperature" },
       "device_humidity": { "name": "Humidity" },
       "device_brightness": { "name": "Brightness" },
