@@ -37,6 +37,7 @@ Unlike traditional per-device polling integrations, Digital Strom Smart uses the
 - **Scene activation** with imported dS scene names (the recommended way to control Digital Strom)
 - **Temperature sensors** per zone (including rooms without heating, using any available source: zone sensors, device sensors)
 - **Device sensors** — Ulux and similar devices expose CO2, brightness, temperature, and humidity as individual sensor entities
+- **Per-device power measurement** — SW-KL200, SW-ZWS200, SW-SSL200, and SW-UMR200 (output 1) report real-time power consumption in Watts when the metering option is enabled in the dSS Configurator
 - **Energy monitoring** (apartment-level power consumption)
 - **Per-circuit energy monitoring** — power **and** lifetime kWh per dSM meter, each as its own device, ready for the **HA Energy Dashboard**
 - **Apartment kWh sensor** — aggregated cumulative energy across all dSMs
@@ -117,6 +118,7 @@ Individual Joker devices:
 
 Device-level sensors (Ulux, etc.):
 - `sensor.<zone>_<device>_temperature` — Device temperature
+- `sensor.<zone>_<device>_power` — Device power (SW-KL200 / SW-ZWS200 / SW-SSL200 / SW-UMR200, Watts — requires metering enabled in dSS Configurator)
 - `sensor.<zone>_<device>_humidity` — Device humidity
 - `sensor.<zone>_<device>_co2` — Device CO2 level
 - `sensor.<zone>_<device>_brightness` — Device brightness
@@ -208,6 +210,13 @@ Digital Strom Smart supports multiple languages for all entity names, configurat
 Home Assistant automatically uses the correct language based on your system language setting. Want to add a translation? PRs welcome — just create a new JSON file in `custom_components/digitalstrom_smart/translations/`.
 
 ## Changelog
+
+### v3.1.0 (2026-05-18) — Per-device power measurement
+
+- **New**: Power sensor entity (Watts) for SW-KL200, SW-ZWS200, SW-SSL200, SW-UMR200 (output 1)
+- Metering must be enabled per device in the dSS Configurator
+- Real-time updates via `deviceSensorValue` events; polled every 30s via cached `apartment/getDevices` (no bus traffic)
+- `state_class: measurement` — fully compatible with the HA Energy Dashboard
 
 ### v3.0.0 (2026-05-12) — Major release
 
