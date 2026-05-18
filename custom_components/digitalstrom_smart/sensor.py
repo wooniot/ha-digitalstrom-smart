@@ -44,7 +44,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import (
     DOMAIN, MANUFACTURER, CONF_ENABLED_ZONES, GROUP_TEMP_CONTROL,
-    SENSOR_TEMPERATURE, SENSOR_HUMIDITY, SENSOR_BRIGHTNESS, SENSOR_CO2,
+    SENSOR_ACTIVE_POWER, SENSOR_TEMPERATURE, SENSOR_HUMIDITY, SENSOR_BRIGHTNESS, SENSOR_CO2,
     OUTDOOR_SENSOR_TRANSLATION_KEYS, DEVICE_SENSOR_TRANSLATION_KEYS,
 )
 from .coordinator import DigitalStromCoordinator
@@ -92,6 +92,13 @@ OUTDOOR_SENSORS = {
 
 # Device sensor type to HA sensor config
 DEVICE_SENSOR_MAP = {
+    SENSOR_ACTIVE_POWER: {
+        "suffix": "Power",
+        "device_class": SensorDeviceClass.POWER,
+        "state_class": SensorStateClass.MEASUREMENT,
+        "unit": UnitOfPower.WATT,
+        "icon": "mdi:lightning-bolt",
+    },
     SENSOR_TEMPERATURE: {
         "suffix": "Temperature",
         "device_class": SensorDeviceClass.TEMPERATURE,
@@ -459,6 +466,10 @@ class DigitalStromDeviceSensor(CoordinatorEntity, SensorEntity):
             self._attr_name = f"{dev_name} {suffix}"
         self._attr_device_class = sensor_config["device_class"]
         self._attr_native_unit_of_measurement = sensor_config["unit"]
+        if "state_class" in sensor_config:
+            self._attr_state_class = sensor_config["state_class"]
+        if "icon" in sensor_config:
+            self._attr_icon = sensor_config["icon"]
         self._attr_device_info = {
             "identifiers": {(DOMAIN, f"{dss_id}_zone_{zone_id}")},
             "name": dev_info.get("zone_name", ""),

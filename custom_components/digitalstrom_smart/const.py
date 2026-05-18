@@ -318,6 +318,7 @@ OUTDOOR_SENSOR_TRANSLATION_KEYS = {
 }
 
 # --- dS Sensor Types ---
+SENSOR_ACTIVE_POWER = 4    # Watt — SW-KL200, SW-ZWS200, SW-SSL200, SW-UMR200 (uitgang 1)
 SENSOR_TEMPERATURE = 9
 SENSOR_HUMIDITY = 13
 SENSOR_BRIGHTNESS = 11
@@ -331,6 +332,7 @@ SENSOR_AIR_PRESSURE = 18
 
 # Device sensor type -> translation key
 DEVICE_SENSOR_TRANSLATION_KEYS = {
+    SENSOR_ACTIVE_POWER: "device_power",
     SENSOR_TEMPERATURE: "device_temperature",
     SENSOR_HUMIDITY: "device_humidity",
     SENSOR_BRIGHTNESS: "device_brightness",
@@ -338,6 +340,7 @@ DEVICE_SENSOR_TRANSLATION_KEYS = {
 }
 
 SENSOR_TYPE_NAMES = {
+    SENSOR_ACTIVE_POWER: "Power",
     SENSOR_TEMPERATURE: "Temperature",
     SENSOR_HUMIDITY: "Humidity",
     SENSOR_BRIGHTNESS: "Brightness",
@@ -351,6 +354,7 @@ SENSOR_TYPE_NAMES = {
 }
 
 SENSOR_TYPE_UNITS = {
+    SENSOR_ACTIVE_POWER: "W",
     SENSOR_TEMPERATURE: "°C",
     SENSOR_HUMIDITY: "%",
     SENSOR_BRIGHTNESS: "lx",

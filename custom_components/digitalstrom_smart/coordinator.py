@@ -214,11 +214,16 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
                         dev_info["groups"].append(ge.get("id", 0))
                 # Device sensors
                 for si, sensor in enumerate(dev.get("sensors", [])):
+                    stype = sensor.get("type", -1)
+                    sval = sensor.get("value")
                     dev_info["sensors"].append({
                         "index": si,
-                        "type": sensor.get("type", -1),
-                        "value": sensor.get("value"),
+                        "type": stype,
+                        "value": sval,
                     })
+                    # Seed _device_sensor_values so entities have an initial value
+                    if stype >= 0 and sval is not None:
+                        self._device_sensor_values.setdefault(dsuid, {})[stype] = float(sval)
                 self.devices[dsuid] = dev_info
                 self.zones[zone_id]["devices"].append(dsuid)
 
@@ -315,7 +320,7 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
             _LOGGER.debug("Device poll failed: %s", err)
             return
 
-        # Parse binary inputs (1=active, 2=inactive)
+        # Parse binary inputs, device power sensors, and runtime state
         all_states: dict[str, int] = {}
         for dev in devices:
             dsuid = dev.get("dSUID", "")
@@ -331,6 +336,12 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
                 "is_valid": bool(dev.get("isValid", True)),
                 "output_mode": int(dev.get("outputMode", 0) or 0),
             }
+            # Refresh per-device sensor values (power, temp, etc.) from cached dSS state
+            for sensor in dev.get("sensors", []):
+                stype = sensor.get("type", -1)
+                sval = sensor.get("value")
+                if stype >= 0 and sval is not None:
+                    self._device_sensor_values.setdefault(dsuid, {})[stype] = float(sval)
 
         # Log poll results for debugging (every poll cycle at debug level)
         binary_devices = {d: dev for d, dev in self.devices.items() if dev.get("binary_inputs")}
