@@ -149,16 +149,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         else:
             _LOGGER.warning("No climate zones detected — check dSS temperature control config")
 
-    # Start event listener as background task (must not block HA bootstrap).
-    # Wrap so any unexpected exception is logged instead of swallowed.
-    async def _safe_start_event_listener():
-        try:
-            await coordinator.start_event_listener()
-        except Exception:  # pylint: disable=broad-except
-            _LOGGER.exception("Event listener crashed during startup")
-
+    # Start event listener as background task (must not block HA bootstrap)
     entry.async_create_background_task(
-        hass, _safe_start_event_listener(),
+        hass, coordinator.start_event_listener(),
         f"{DOMAIN}_event_listener",
     )
 
