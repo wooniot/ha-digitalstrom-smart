@@ -369,9 +369,25 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
         Tries all zones — not just those with GROUP_HEATING/GROUP_TEMP_CONTROL,
         because some setups (PLAN44, EnOcean, external actuators) have climate
         control configured at the zone level without heating-group devices.
+        Also pre-fetches temperature values so the fallback in has_temp_control
+        works at startup even when ControlMode is 0 (cooling mode).
         """
         if not self.pro_enabled:
             return
+
+        # Pre-fetch temperature values — needed as fallback when in cooling mode
+        # (getTemperatureControlConfig2 may return ControlMode=0 while cooling is active)
+        try:
+            temp_data = await self.api.get_temperature_values()
+            for zone_data in temp_data:
+                zone_id = zone_data.get("id")
+                if zone_id is not None and zone_id > 0:
+                    existing = self._temperatures.get(zone_id, {})
+                    existing.update(zone_data)
+                    self._temperatures[zone_id] = existing
+        except Exception as err:
+            _LOGGER.debug("Pre-fetch temperature values failed: %s", err)
+
         for zone_id, zone_info in self.zones.items():
             # Always try to fetch config for zones not yet cached
             if zone_id not in self._climate_config:
