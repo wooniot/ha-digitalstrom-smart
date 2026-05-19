@@ -146,7 +146,6 @@ class DigitalStromJokerSwitch(CoordinatorEntity, SwitchEntity):
             "name": self._zone_name,
             "manufacturer": MANUFACTURER,
             "model": "Zone",
-                "suggested_area": self._zone_name,
         }
 
     @property
