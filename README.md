@@ -378,7 +378,7 @@ This integration sends a minimal anonymous ping to WoonIoT once at startup and e
 | `dss_id` | First 8 characters of dSS machine ID | Pseudonymous |
 | `pro` | Pro license active (true/false) | No |
 
-The receiving server is `ha-ds.internetist.nl` (operated by WoonIoT BV, hosted in the EU). Your IP address is technically received by the server as part of every HTTP request. No data is sold or shared with third parties.
+The receiving server is `ha-ds.internetist.nl` (operated by WoonIoT BV, hosted in the EU). Your IP address is technically received by the server as part of every HTTP request. No data is sold or shared with third parties. Full details: [wooniot.nl/privacy](https://www.wooniot.nl/privacy)
 
 **Opt out:** Go to **Settings → Devices & Services → Digital Strom Smart → Configure** and disable the *Send anonymous telemetry* toggle. No data will be sent after saving.
 
