@@ -1022,6 +1022,18 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
             self._binary_poll_loop(), f"{DOMAIN}_binary_poll"
         )
 
+        # Fetch per-device power/energy values in background after setup completes
+        # (kept out of main refresh cycle to avoid first-refresh timeout)
+        self.hass.async_create_background_task(
+            self._delayed_energy_poll(), f"{DOMAIN}_energy_initial"
+        )
+
+    async def _delayed_energy_poll(self) -> None:
+        """Fetch initial power+energy values after a short delay, then refresh sensors."""
+        await asyncio.sleep(5)
+        await self.fetch_device_power_energy_sensors()
+        self.async_update_listeners()
+
     async def _binary_poll_loop(self) -> None:
         """Fast polling loop for binary input devices (every 5s).
 
@@ -1285,9 +1297,6 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
 
             # Device sensors: Ulux, thermostats, etc. (FREE)
             await self.fetch_device_sensors()
-
-            # Per-device power + energy initial values (FREE)
-            await self.fetch_device_power_energy_sensors()
 
             # Binary input states: handled by separate fast poll loop (_binary_poll_loop)
 
