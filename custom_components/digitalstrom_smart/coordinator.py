@@ -416,6 +416,41 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
             except DigitalStromApiError:
                 pass
 
+        # Set initial cooling mode from user states (already fetched before this call).
+        # heating_system_mode: active/1 = heating, inactive/2 = cooling.
+        # Without this, _heating_system_cooling stays False at startup even when dSS
+        # is in cooling mode — only events would update it, but events don't fire at boot.
+        heating_state = self._user_states.get("heating_system_mode", {})
+        if heating_state:
+            state_val = str(heating_state.get("state", "")).lower()
+            value_val = heating_state.get("value")
+            was_cooling = self._heating_system_cooling
+            self._heating_system_cooling = (
+                state_val in ("inactive", "off", "cooling", "2") or value_val == 2
+            )
+            _LOGGER.info(
+                "Initial heating_system_mode: state=%s value=%s → cooling=%s",
+                state_val, value_val, self._heating_system_cooling,
+            )
+        else:
+            # Fallback: direct property query if user states not yet populated
+            try:
+                raw = await self.api.get_user_defined_states()
+                for entry in raw:
+                    if entry.get("name") == "heating_system_mode":
+                        state_val = str(entry.get("state", "")).lower()
+                        value_val = entry.get("value")
+                        self._heating_system_cooling = (
+                            state_val in ("inactive", "off", "cooling", "2") or value_val == 2
+                        )
+                        _LOGGER.info(
+                            "Initial heating_system_mode (fallback): state=%s value=%s → cooling=%s",
+                            state_val, value_val, self._heating_system_cooling,
+                        )
+                        break
+            except Exception as err:
+                _LOGGER.debug("Could not fetch heating_system_mode: %s", err)
+
     async def fetch_sensor_data(self) -> None:
         """Fetch apartment-wide sensor values (outdoor, per-zone). PRO."""
         if not self.pro_enabled:
