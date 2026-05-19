@@ -127,14 +127,22 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     except Exception as err:
         _LOGGER.warning("Timed events fetch failed (non-fatal): %s", err)
 
-    # Pro: fetch climate, sensor, and apartment state data
+    # Fetch initial apartment presence state (free + pro — one cheap API call)
+    try:
+        await coordinator.fetch_apartment_state()
+    except Exception as err:
+        _LOGGER.debug("Apartment state fetch failed (non-fatal): %s", err)
+
+    # Pro: fetch climate and sensor data
     if coordinator.pro_enabled:
         try:
             await coordinator.fetch_climate_data()
-            await coordinator.fetch_sensor_data()
-            await coordinator.fetch_apartment_state()
         except Exception as err:
-            _LOGGER.warning("Pro data fetch failed (non-fatal): %s", err)
+            _LOGGER.warning("Climate data fetch failed (non-fatal): %s", err)
+        try:
+            await coordinator.fetch_sensor_data()
+        except Exception as err:
+            _LOGGER.warning("Sensor data fetch failed (non-fatal): %s", err)
 
         # Log detected climate zones for diagnostics
         climate_zones = [
