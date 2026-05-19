@@ -45,6 +45,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from .const import (
     DOMAIN, MANUFACTURER, CONF_ENABLED_ZONES, GROUP_TEMP_CONTROL,
     SENSOR_TEMPERATURE, SENSOR_HUMIDITY, SENSOR_BRIGHTNESS, SENSOR_CO2,
+    SENSOR_ACTIVE_POWER, SENSOR_ACTIVE_ENERGY,
     OUTDOOR_SENSOR_TRANSLATION_KEYS, DEVICE_SENSOR_TRANSLATION_KEYS,
 )
 from .coordinator import DigitalStromCoordinator
@@ -92,6 +93,22 @@ OUTDOOR_SENSORS = {
 
 # Device sensor type to HA sensor config
 DEVICE_SENSOR_MAP = {
+    SENSOR_ACTIVE_POWER: {
+        "suffix": "Power",
+        "device_class": SensorDeviceClass.POWER,
+        "state_class": SensorStateClass.MEASUREMENT,
+        "unit": UnitOfPower.WATT,
+        "icon": "mdi:lightning-bolt",
+        "per_device": True,
+    },
+    SENSOR_ACTIVE_ENERGY: {
+        "suffix": "Energy",
+        "device_class": SensorDeviceClass.ENERGY,
+        "state_class": SensorStateClass.TOTAL_INCREASING,
+        "unit": UnitOfEnergy.WATT_HOUR,
+        "icon": "mdi:lightning-bolt-circle",
+        "per_device": True,
+    },
     SENSOR_TEMPERATURE: {
         "suffix": "Temperature",
         "device_class": SensorDeviceClass.TEMPERATURE,
@@ -172,11 +189,14 @@ async def async_setup_entry(
             stype = sensor.get("type", -1)
             if stype in DEVICE_SENSOR_MAP:
                 sensor_config = DEVICE_SENSOR_MAP[stype]
-                # Only create entity if we have or can get a value
-                has_value = (
-                    sensor.get("value") is not None
-                    or coordinator.get_device_sensor_value(dsuid, stype) is not None
-                )
+                # Power/energy sensors always get an entity (value arrives via events)
+                if sensor_config.get("per_device"):
+                    has_value = True
+                else:
+                    has_value = (
+                        sensor.get("value") is not None
+                        or coordinator.get_device_sensor_value(dsuid, stype) is not None
+                    )
                 if has_value:
                     entities.append(
                         DigitalStromDeviceSensor(
@@ -435,10 +455,9 @@ class DigitalStromHeatingOutputSensor(CoordinatorEntity, SensorEntity):
 
 
 class DigitalStromDeviceSensor(CoordinatorEntity, SensorEntity):
-    """Device-level sensor (Ulux CO2, brightness, temperature, humidity)."""
+    """Device-level sensor (power/energy for Joker devices, CO2/temp/humidity for Ulux)."""
 
     _attr_has_entity_name = True
-    _attr_state_class = SensorStateClass.MEASUREMENT
 
     def __init__(
         self,
@@ -453,6 +472,7 @@ class DigitalStromDeviceSensor(CoordinatorEntity, SensorEntity):
         self._sensor_type = sensor_type
         dss_id = coordinator.dss_id
         zone_id = dev_info.get("zone_id", 0)
+        zone_name = dev_info.get("zone_name", "")
         dev_name = dev_info.get("name", "") or dsuid[:8]
         suffix = sensor_config["suffix"]
         self._attr_unique_id = f"ds_{dss_id}_dev_{dsuid}_{suffix.lower()}"
@@ -463,13 +483,27 @@ class DigitalStromDeviceSensor(CoordinatorEntity, SensorEntity):
             self._attr_name = f"{dev_name} {suffix}"
         self._attr_device_class = sensor_config["device_class"]
         self._attr_native_unit_of_measurement = sensor_config["unit"]
-        self._attr_device_info = {
-            "identifiers": {(DOMAIN, f"{dss_id}_zone_{zone_id}")},
-            "name": dev_info.get("zone_name", ""),
-            "manufacturer": MANUFACTURER,
-            "model": "Zone",
-            "suggested_area": dev_info.get("zone_name", ""),
-        }
+        self._attr_state_class = sensor_config.get("state_class", SensorStateClass.MEASUREMENT)
+        if "icon" in sensor_config:
+            self._attr_icon = sensor_config["icon"]
+        if sensor_config.get("per_device"):
+            # Power/energy: own device entry, linked to the zone
+            self._attr_device_info = {
+                "identifiers": {(DOMAIN, f"{dss_id}_dev_{dsuid}")},
+                "name": dev_name,
+                "manufacturer": MANUFACTURER,
+                "model": "Digital Strom Device",
+                "via_device": (DOMAIN, f"{dss_id}_zone_{zone_id}"),
+                "suggested_area": zone_name,
+            }
+        else:
+            self._attr_device_info = {
+                "identifiers": {(DOMAIN, f"{dss_id}_zone_{zone_id}")},
+                "name": zone_name,
+                "manufacturer": MANUFACTURER,
+                "model": "Zone",
+                "suggested_area": zone_name,
+            }
 
     @property
     def native_value(self) -> float | None:
