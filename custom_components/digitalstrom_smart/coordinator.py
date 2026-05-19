@@ -417,45 +417,35 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
             except DigitalStromApiError:
                 pass
 
-        # Set initial cooling mode from heating_system_mode state.
-        # Only needed once at startup — after that, real-time events keep _heating_system_cooling
-        # up to date. Without this, the flag stays False when dSS boots in cooling mode because
-        # no event fires at startup to update it.
-        if not self._heating_mode_initialized:
-            # Try user states first (populated by fetch_user_states which runs before the
-            # explicit __init__ call of fetch_climate_data, but not before _async_update_data).
-            heating_state = self._user_states.get("heating_system_mode", {})
-            if heating_state:
-                state_val = str(heating_state.get("state", "")).lower()
-                value_val = heating_state.get("value")
-                self._heating_system_cooling = (
-                    state_val in ("inactive", "off", "cooling", "2") or value_val == 2
-                )
-                _LOGGER.info(
-                    "Initial heating_system_mode (from user states): state=%s value=%s → cooling=%s",
-                    state_val, value_val, self._heating_system_cooling,
-                )
-                self._heating_mode_initialized = True
-            else:
-                # First startup call (_async_update_data runs before fetch_user_states):
-                # fetch directly from the API.
-                try:
-                    raw = await self.api.get_user_defined_states()
-                    for entry in raw:
-                        if entry.get("name") == "heating_system_mode":
-                            state_val = str(entry.get("state", "")).lower()
-                            value_val = entry.get("value")
-                            self._heating_system_cooling = (
-                                state_val in ("inactive", "off", "cooling", "2") or value_val == 2
-                            )
-                            _LOGGER.info(
-                                "Initial heating_system_mode (direct API): state=%s value=%s → cooling=%s",
-                                state_val, value_val, self._heating_system_cooling,
-                            )
-                            self._heating_mode_initialized = True
-                            break
-                except Exception as err:
-                    _LOGGER.debug("Could not fetch heating_system_mode: %s", err)
+        # Always poll heating_system_mode from the API each cycle.
+        # stateChange events don't reliably fire for all mode transitions (e.g. cooling→heating),
+        # so we re-read every fetch_climate_data() call to stay in sync.
+        try:
+            raw = await self.api.get_user_defined_states()
+            for entry in raw:
+                if entry.get("name") == "heating_system_mode":
+                    state_val = str(entry.get("state", "")).lower()
+                    value_val = entry.get("value")
+                    new_cooling = (
+                        state_val in ("inactive", "off", "cooling", "2") or value_val == 2
+                    )
+                    if new_cooling != self._heating_system_cooling:
+                        self._heating_system_cooling = new_cooling
+                        _LOGGER.info(
+                            "heating_system_mode changed (polled): state=%s value=%s → cooling=%s",
+                            state_val, value_val, self._heating_system_cooling,
+                        )
+                        self.async_update_listeners()
+                    elif not self._heating_mode_initialized:
+                        self._heating_system_cooling = new_cooling
+                        _LOGGER.info(
+                            "heating_system_mode initialized: state=%s value=%s → cooling=%s",
+                            state_val, value_val, self._heating_system_cooling,
+                        )
+                    self._heating_mode_initialized = True
+                    break
+        except Exception as err:
+            _LOGGER.debug("Could not fetch heating_system_mode: %s", err)
 
     async def fetch_sensor_data(self) -> None:
         """Fetch apartment-wide sensor values (outdoor, per-zone). PRO."""
