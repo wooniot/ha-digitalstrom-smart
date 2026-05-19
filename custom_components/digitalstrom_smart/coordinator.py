@@ -662,27 +662,34 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
     def has_temp_control(self, zone_id: int) -> bool:
         """Check if zone has temperature control vs dumb heating.
 
-        Primary: ControlMode from getTemperatureControlConfig2 (most reliable).
-        Fallback: TemperatureValue or NominalValue from getTemperatureControlValues.
+        Priority:
+        1. Climate config from getTemperatureControlConfig2 (most reliable, but
+           returns ControlMode=0 when system is in cooling mode)
+        2. Zone groups from dSS structure — GROUP_TEMP_CONTROL (48) or
+           GROUP_COOLING (9) always mean temperature control, regardless of mode
+        3. Temperature values (TemperatureValue / NominalValue) as last resort
         """
         # Primary: climate config present = has temp control
-        # (fetch_climate_data only stores config when ControlMode is active)
         config = self._climate_config.get(zone_id)
         if config:
             return True
 
-        # Fallback: temperature values from polling
+        # Reliable fallback: zone groups from dSS structure (available at startup,
+        # independent of API calls that may fail in cooling mode)
+        zone_info = self.zones.get(zone_id, {})
+        groups = zone_info.get("groups", set())
+        if groups & {GROUP_TEMP_CONTROL, GROUP_COOLING}:
+            return True
+
+        # Last resort: temperature values (populated by periodic poll or pre-fetch)
         data = self._temperatures.get(zone_id)
-        if not data:
-            return False
-        # Zone has temp control if it reports a measured temperature value
-        tv = data.get("TemperatureValue")
-        if tv is not None and tv > 0:
-            return True
-        # Also check if NominalValue is set (target temp configured)
-        nv = data.get("NominalValue")
-        if nv is not None and nv > 0:
-            return True
+        if data:
+            tv = data.get("TemperatureValue")
+            if tv is not None and tv > 0:
+                return True
+            nv = data.get("NominalValue")
+            if nv is not None and nv > 0:
+                return True
         return False
 
     def get_temperature(self, zone_id: int) -> float | None:
@@ -1162,10 +1169,10 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
                 )
                 self.async_update_listeners()
             elif state_name == "heating_system_mode":
-                # Heating controller reports: active=heating, inactive=cooling
+                # Heating controller: active/1=heating, inactive/2/off/cooling=cooling
                 was_cooling = self._heating_system_cooling
                 self._heating_system_cooling = state_value.lower() in (
-                    "inactive", "off", "cooling",
+                    "inactive", "off", "cooling", "2",
                 )
                 if was_cooling != self._heating_system_cooling:
                     _LOGGER.info(
