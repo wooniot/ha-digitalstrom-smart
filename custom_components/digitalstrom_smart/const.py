@@ -406,6 +406,7 @@ CONF_DSS_ID = "dss_id"
 # Options
 CONF_INVERT_COVER = "invert_cover_position"
 CONF_PRO_LICENSE = "pro_license_key"
+CONF_TELEMETRY = "telemetry_enabled"
 
 # --- Platforms ---
 # Free platforms (always loaded)

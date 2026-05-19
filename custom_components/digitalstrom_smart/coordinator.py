@@ -44,6 +44,7 @@ from .const import (
     SENSOR_CO2,
     INTEGRATION_VERSION,
     TELEMETRY_URL,
+    CONF_TELEMETRY,
     PRESENCE_SCENE_NUMBERS,
     ALARM_SCENE_NUMBERS,
     SCENE_PRESENT,
@@ -151,6 +152,7 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
         # Pro license status
         self.pro_enabled = False
         self.license_info: dict = {"valid": False, "reason": "no_key", "type": None, "method": None}
+        self.telemetry_enabled = True  # can be overridden from options
 
     def _parse_structure(self, structure: dict) -> None:
         """Parse apartment structure into zone and device dicts."""
@@ -617,6 +619,32 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
                         found_count += 1
 
         _LOGGER.debug("Polled %d sensor values from zone API", found_count)
+
+    async def fetch_device_power_energy_sensors(self) -> None:
+        """Fetch current power (type 4) and energy (type 5) values per device.
+
+        The initial device structure from dSS often has no value for energy
+        counters (type 5) — they only update via events which come infrequently.
+        This explicit poll ensures entities have a value at startup.
+        """
+        POLL_TYPES = {SENSOR_ACTIVE_POWER, SENSOR_ACTIVE_ENERGY}
+        polled = 0
+        for dsuid, dev in self.devices.items():
+            for sensor in dev.get("sensors", []):
+                stype = sensor.get("type", -1)
+                if stype not in POLL_TYPES:
+                    continue
+                sidx = sensor.get("index", 0)
+                try:
+                    result = await self.api.get_device_sensor_value(dsuid, sidx)
+                    val = result.get("sensorValueFloat", result.get("sensorValue"))
+                    if val is not None:
+                        self._device_sensor_values.setdefault(dsuid, {})[stype] = float(val)
+                        sensor["value"] = float(val)
+                        polled += 1
+                except Exception:
+                    pass
+        _LOGGER.debug("Polled %d device power/energy sensor values", polled)
 
     def _find_device_with_sensor(self, zone_info: dict, sensor_type: int) -> str | None:
         """Find the first device in a zone that has a given sensor type."""
@@ -1256,6 +1284,9 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
             # Device sensors: Ulux, thermostats, etc. (FREE)
             await self.fetch_device_sensors()
 
+            # Per-device power + energy initial values (FREE)
+            await self.fetch_device_power_energy_sensors()
+
             # Binary input states: handled by separate fast poll loop (_binary_poll_loop)
 
             # Pro features: extra data
@@ -1273,9 +1304,11 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
         except DigitalStromApiError as err:
             raise UpdateFailed(f"Poll failed: {err}") from err
 
-        # Send anonymous telemetry ping (at startup + every 24h)
+        # Send anonymous telemetry ping (at startup + every 24h) — skipped if opted out
         now = _time.time()
-        if not self._telemetry_sent or (now - self._telemetry_last > 86400):
+        if self.telemetry_enabled and (
+            not self._telemetry_sent or (now - self._telemetry_last > 86400)
+        ):
             self._telemetry_sent = True
             self._telemetry_last = now
             self.hass.async_create_task(self._send_telemetry())

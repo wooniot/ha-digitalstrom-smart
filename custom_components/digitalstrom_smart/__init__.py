@@ -23,6 +23,7 @@ from .const import (
     CONF_APP_TOKEN,
     CONF_DSS_ID,
     CONF_PRO_LICENSE,
+    CONF_TELEMETRY,
 )
 from .coordinator import DigitalStromCoordinator
 
@@ -81,6 +82,20 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             )
     else:
         coordinator.license_info = {"valid": False, "reason": "no_key", "type": None, "method": None}
+
+    # Telemetry opt-out (default: enabled)
+    coordinator.telemetry_enabled = entry.options.get(CONF_TELEMETRY, True)
+
+    # Trial requires telemetry — disable trial features when opted out
+    if not coordinator.telemetry_enabled and coordinator.pro_enabled:
+        license_type = coordinator.license_info.get("type", "")
+        if license_type == "trial" or (
+            pro_key.startswith("TRIAL-") if pro_key else False
+        ):
+            coordinator.pro_enabled = False
+            coordinator.license_info["valid"] = False
+            coordinator.license_info["reason"] = "trial_requires_telemetry"
+            _LOGGER.info("Trial license disabled: telemetry opt-out")
 
     # Initial data fetch
     await coordinator.async_config_entry_first_refresh()

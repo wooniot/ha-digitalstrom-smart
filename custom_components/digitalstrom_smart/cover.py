@@ -94,6 +94,7 @@ class DigitalStromCover(CoordinatorEntity, CoverEntity):
             "name": self._zone_name,
             "manufacturer": MANUFACTURER,
             "model": "Zone",
+                "suggested_area": self._zone_name,
         }
 
     def _ds_to_ha_position(self, ds_value: int) -> int:

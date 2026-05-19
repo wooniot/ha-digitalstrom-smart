@@ -479,6 +479,7 @@ class DigitalStromDeviceSensor(CoordinatorEntity, SensorEntity):
             self._attr_icon = sensor_config["icon"]
         # Power/energy sensors: register on a per-device HA device so the
         # device name is shown in the entity, not just the zone name.
+        zone_name = dev_info.get("zone_name", "") or ""
         if sensor_type in (SENSOR_ACTIVE_POWER, SENSOR_ACTIVE_ENERGY):
             self._attr_device_info = {
                 "identifiers": {(DOMAIN, f"{dss_id}_dev_{dsuid}")},
@@ -486,13 +487,15 @@ class DigitalStromDeviceSensor(CoordinatorEntity, SensorEntity):
                 "manufacturer": MANUFACTURER,
                 "model": "Digital Strom Device",
                 "via_device": (DOMAIN, f"{dss_id}_zone_{zone_id}"),
+                "suggested_area": zone_name,
             }
         else:
             self._attr_device_info = {
                 "identifiers": {(DOMAIN, f"{dss_id}_zone_{zone_id}")},
-                "name": dev_info.get("zone_name", ""),
+                "name": zone_name,
                 "manufacturer": MANUFACTURER,
                 "model": "Zone",
+                "suggested_area": zone_name,
             }
 
     @property

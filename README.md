@@ -211,6 +211,13 @@ Home Assistant automatically uses the correct language based on your system lang
 
 ## Changelog
 
+### v3.2.1 (2026-05-19) — Bug fixes
+
+- **Fix**: Energy sensor (kWh) on Joker devices showing "unknown" at startup — now polled explicitly at first load
+- **Fix**: Devices not assigned to HA area automatically — `suggested_area` added to all platform entities
+- **Privacy**: Telemetry opt-out toggle added in integration options (Settings → Configure)
+- Trial licenses require telemetry; paid Pro licenses work without it
+
 ### v3.1.0 (2026-05-18) — Per-device power measurement
 
 - **New**: Power sensor entity (Watts) for SW-KL200, SW-ZWS200, SW-SSL200, SW-UMR200 (output 1)
@@ -355,6 +362,27 @@ This is the 2.10.x development cycle rolled up into a single major release. High
 - Initial release: zone-based lights, covers, scenes, temperature sensors, energy monitoring
 - Event-driven architecture with real-time state updates
 - Local and cloud connection support
+
+## Privacy & Telemetry
+
+This integration sends a minimal anonymous ping to WoonIoT once at startup and every 24 hours. This helps us understand how many installations are active and which HA versions are in use.
+
+**What is sent:**
+
+| Field | Value | Personal? |
+|-------|-------|-----------|
+| `v` | Integration version | No |
+| `ha` | Home Assistant version | No |
+| `zones` | Number of zones (integer) | No |
+| `devices` | Number of devices (integer) | No |
+| `dss_id` | First 8 characters of dSS machine ID | Pseudonymous |
+| `pro` | Pro license active (true/false) | No |
+
+The receiving server is `ha-ds.internetist.nl` (operated by WoonIoT BV, hosted in the EU). Your IP address is technically received by the server as part of every HTTP request. No data is sold or shared with third parties.
+
+**Opt out:** Go to **Settings → Devices & Services → Digital Strom Smart → Configure** and disable the *Send anonymous telemetry* toggle. No data will be sent after saving.
+
+> Note: Trial licenses require telemetry to be enabled. Paid Pro licenses work without telemetry.
 
 ## About
 
