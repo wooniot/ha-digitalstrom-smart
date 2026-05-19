@@ -147,6 +147,7 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
         self._apartment_presence: int | None = None  # current presence scene nr
         self._apartment_alarms: set[int] = set()     # active alarm scene nrs
         self._heating_system_cooling: bool = False    # True when system is in cooling mode
+        self._heating_mode_initialized: bool = False  # fetched at least once from API
 
         # Pro license status
         self.pro_enabled = False
@@ -416,40 +417,45 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
             except DigitalStromApiError:
                 pass
 
-        # Set initial cooling mode from user states (already fetched before this call).
-        # heating_system_mode: active/1 = heating, inactive/2 = cooling.
-        # Without this, _heating_system_cooling stays False at startup even when dSS
-        # is in cooling mode — only events would update it, but events don't fire at boot.
-        heating_state = self._user_states.get("heating_system_mode", {})
-        if heating_state:
-            state_val = str(heating_state.get("state", "")).lower()
-            value_val = heating_state.get("value")
-            was_cooling = self._heating_system_cooling
-            self._heating_system_cooling = (
-                state_val in ("inactive", "off", "cooling", "2") or value_val == 2
-            )
-            _LOGGER.info(
-                "Initial heating_system_mode: state=%s value=%s → cooling=%s",
-                state_val, value_val, self._heating_system_cooling,
-            )
-        else:
-            # Fallback: direct property query if user states not yet populated
-            try:
-                raw = await self.api.get_user_defined_states()
-                for entry in raw:
-                    if entry.get("name") == "heating_system_mode":
-                        state_val = str(entry.get("state", "")).lower()
-                        value_val = entry.get("value")
-                        self._heating_system_cooling = (
-                            state_val in ("inactive", "off", "cooling", "2") or value_val == 2
-                        )
-                        _LOGGER.info(
-                            "Initial heating_system_mode (fallback): state=%s value=%s → cooling=%s",
-                            state_val, value_val, self._heating_system_cooling,
-                        )
-                        break
-            except Exception as err:
-                _LOGGER.debug("Could not fetch heating_system_mode: %s", err)
+        # Set initial cooling mode from heating_system_mode state.
+        # Only needed once at startup — after that, real-time events keep _heating_system_cooling
+        # up to date. Without this, the flag stays False when dSS boots in cooling mode because
+        # no event fires at startup to update it.
+        if not self._heating_mode_initialized:
+            # Try user states first (populated by fetch_user_states which runs before the
+            # explicit __init__ call of fetch_climate_data, but not before _async_update_data).
+            heating_state = self._user_states.get("heating_system_mode", {})
+            if heating_state:
+                state_val = str(heating_state.get("state", "")).lower()
+                value_val = heating_state.get("value")
+                self._heating_system_cooling = (
+                    state_val in ("inactive", "off", "cooling", "2") or value_val == 2
+                )
+                _LOGGER.info(
+                    "Initial heating_system_mode (from user states): state=%s value=%s → cooling=%s",
+                    state_val, value_val, self._heating_system_cooling,
+                )
+                self._heating_mode_initialized = True
+            else:
+                # First startup call (_async_update_data runs before fetch_user_states):
+                # fetch directly from the API.
+                try:
+                    raw = await self.api.get_user_defined_states()
+                    for entry in raw:
+                        if entry.get("name") == "heating_system_mode":
+                            state_val = str(entry.get("state", "")).lower()
+                            value_val = entry.get("value")
+                            self._heating_system_cooling = (
+                                state_val in ("inactive", "off", "cooling", "2") or value_val == 2
+                            )
+                            _LOGGER.info(
+                                "Initial heating_system_mode (direct API): state=%s value=%s → cooling=%s",
+                                state_val, value_val, self._heating_system_cooling,
+                            )
+                            self._heating_mode_initialized = True
+                            break
+                except Exception as err:
+                    _LOGGER.debug("Could not fetch heating_system_mode: %s", err)
 
     async def fetch_sensor_data(self) -> None:
         """Fetch apartment-wide sensor values (outdoor, per-zone). PRO."""
