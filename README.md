@@ -391,4 +391,4 @@ Developed by **[Woon IoT BV](https://wooniot.nl)** — professional Digital Stro
 - Website: [wooniot.nl](https://wooniot.nl)
 - Pro license: [wooniot.nl/pro](https://wooniot.nl/pro)
 - Issues: [GitHub Issues](https://github.com/wooniot/ha-digitalstrom-smart/issues)
-- License: MIT
+- License: [CC BY-NC-ND 4.0](https://creativecommons.org/licenses/by-nc-nd/4.0/) — free for personal use, commercial use requires written permission from Woon IoT BV
