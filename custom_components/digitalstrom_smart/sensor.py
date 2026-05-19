@@ -326,6 +326,7 @@ class DigitalStromTemperatureSensor(CoordinatorEntity, SensorEntity):
             "name": zone_info["name"],
             "manufacturer": MANUFACTURER,
             "model": "Zone",
+            "suggested_area": zone_info["name"],
         }
 
     @property
@@ -356,6 +357,7 @@ class DigitalStromCurrentTempSensor(CoordinatorEntity, SensorEntity):
             "name": zone_info["name"],
             "manufacturer": MANUFACTURER,
             "model": "Zone",
+            "suggested_area": zone_info["name"],
         }
 
     @property
@@ -386,6 +388,7 @@ class DigitalStromTargetTempSensor(CoordinatorEntity, SensorEntity):
             "name": zone_info["name"],
             "manufacturer": MANUFACTURER,
             "model": "Zone",
+            "suggested_area": zone_info["name"],
         }
 
     @property
@@ -416,6 +419,7 @@ class DigitalStromHeatingOutputSensor(CoordinatorEntity, SensorEntity):
             "name": zone_info["name"],
             "manufacturer": MANUFACTURER,
             "model": "Zone",
+            "suggested_area": zone_info["name"],
         }
 
     @property
@@ -464,6 +468,7 @@ class DigitalStromDeviceSensor(CoordinatorEntity, SensorEntity):
             "name": dev_info.get("zone_name", ""),
             "manufacturer": MANUFACTURER,
             "model": "Zone",
+            "suggested_area": dev_info.get("zone_name", ""),
         }
 
     @property

@@ -201,6 +201,7 @@ class DigitalStromJokerBinarySensor(CoordinatorEntity, BinarySensorEntity):
             "name": self._zone_name,
             "manufacturer": MANUFACTURER,
             "model": "Zone",
+            "suggested_area": self._zone_name,
         }
 
     @property
@@ -336,6 +337,7 @@ class DigitalStromDeviceOutputStatus(CoordinatorEntity, BinarySensorEntity):
             "name": dev.get("zone_name", ""),
             "manufacturer": MANUFACTURER,
             "model": "Zone",
+            "suggested_area": dev.get("zone_name", ""),
         }
 
     @property
