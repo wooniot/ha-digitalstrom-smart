@@ -961,14 +961,26 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
         return scene in self._apartment_alarms
 
     async def fetch_apartment_state(self) -> None:
-        """Fetch initial apartment presence state from dSS."""
+        """Poll apartment presence state from dSS (free + pro, every cycle).
+
+        stateChange events don't reliably fire on restart or when the dSS
+        presence scene is set externally, so we re-read every poll cycle.
+        """
         try:
             scene = await self.api.get_last_called_scene(0, 0)
             if scene >= 0 and scene in PRESENCE_SCENE_NUMBERS:
-                self._apartment_presence = scene
-                _LOGGER.info("Initial apartment state: scene %d", scene)
+                if self._apartment_presence is None:
+                    self._apartment_presence = scene
+                    _LOGGER.info("Apartment presence initialized: scene %d", scene)
+                elif scene != self._apartment_presence:
+                    _LOGGER.info(
+                        "Apartment presence changed (polled): %d → %d",
+                        self._apartment_presence, scene,
+                    )
+                    self._apartment_presence = scene
+                    self.async_update_listeners()
         except Exception as err:
-            _LOGGER.debug("Could not fetch apartment state: %s", err)
+            _LOGGER.debug("Could not poll apartment presence: %s", err)
 
     async def call_apartment_scene(self, scene: int) -> None:
         """Call an apartment-wide scene (zone 0, group 0)."""
@@ -1300,6 +1312,10 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
             await self.fetch_device_sensors()
 
             # Binary input states: handled by separate fast poll loop (_binary_poll_loop)
+
+            # Apartment presence mode: poll every cycle (free + pro).
+            # Events don't fire reliably on restart or external scene changes.
+            await self.fetch_apartment_state()
 
             # Pro features: extra data
             if self.pro_enabled:
