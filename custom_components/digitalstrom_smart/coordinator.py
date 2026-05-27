@@ -1193,6 +1193,35 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
                             break
                 self.async_update_listeners()
 
+        elif name == "addonStateChange":
+            # dSS fires addonStateChange for states managed by the user-defined-states
+            # addon (system-addon-user-defined-states). Without subscribing to this
+            # event the user_states cache never gets live updates after init.
+            state_name = props.get("statename") or props.get("name") or ""
+            state_value = props.get("state", "") or props.get("value", "")
+            if not state_name:
+                _LOGGER.debug("addonStateChange without statename, ignored: %s", props)
+                return
+            state_str = state_value.lower() if isinstance(state_value, str) else state_value
+            value_norm: int | str = state_str
+            if state_str in ("active", "1"):
+                value_norm = STATE_VALUE_ACTIVE
+            elif state_str in ("inactive", "2"):
+                value_norm = 2
+            # Update both apartment-wide user states and configurator custom states
+            matched_id = self._find_custom_state_by_key(state_name) if hasattr(self, "_find_custom_state_by_key") else None
+            if matched_id:
+                self.update_custom_state_runtime(matched_id, str(state_value), value_norm if isinstance(value_norm, int) else None)
+            self._user_states[state_name] = {
+                "state": str(state_value),
+                "value": value_norm,
+            }
+            _LOGGER.debug(
+                "addonStateChange: %s = %s (value=%s)",
+                state_name, state_value, value_norm,
+            )
+            self.async_update_listeners()
+
         elif name == "stateChange":
             dsuid = props.get("dsuid", "")
             state_name = props.get("statename", "")

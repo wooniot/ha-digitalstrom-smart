@@ -860,6 +860,7 @@ class DigitalStromApi:
             "undoScene",
             "zoneSensorValue",
             "stateChange",
+            "addonStateChange",   # user-defined states (system-addon-user-defined-states)
             "deviceSensorValue",
             "running",
         ]
