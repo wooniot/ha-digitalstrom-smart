@@ -103,6 +103,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     except Exception as err:
         _LOGGER.warning("Device sensor fetch failed (non-fatal): %s", err)
 
+    # One-time startup poll for per-device power/energy (SW-KL200 etc.)
+    # After this, deviceSensorValue events keep values current.
+    try:
+        await coordinator.fetch_device_power_sensors()
+    except Exception as err:
+        _LOGGER.warning("Device power sensor fetch failed (non-fatal): %s", err)
+
     # Fetch per-circuit (dSM) power + cumulative energy
     try:
         await coordinator.fetch_circuit_data()

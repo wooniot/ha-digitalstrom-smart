@@ -656,27 +656,46 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
 
         _LOGGER.debug("Polled %d sensor values from zone API", found_count)
 
-        # Poll initial power/energy for devices with SENSOR_ACTIVE_POWER or SENSOR_ACTIVE_ENERGY.
-        # These values only arrive via deviceSensorValue events after startup, which may take
-        # a long time (or never) for infrequently-reporting devices like SW-KL200.
-        power_count = 0
-        for dsuid, dev in self.devices.items():
-            sensor_types = {s.get("type") for s in dev.get("sensors", [])}
-            if not (SENSOR_ACTIVE_POWER in sensor_types or SENSOR_ACTIVE_ENERGY in sensor_types):
-                continue
-            zone_id = dev.get("zone_id")
-            if zone_id is None:
-                continue
-            power_w, energy_wh = await self.api.get_device_consumption(zone_id, dsuid)
-            if power_w is not None:
-                self._device_sensor_values.setdefault(dsuid, {})[SENSOR_ACTIVE_POWER] = round(power_w, 2)
-                power_count += 1
-            if energy_wh is not None:
-                self._device_sensor_values.setdefault(dsuid, {})[SENSOR_ACTIVE_ENERGY] = round(energy_wh, 2)
-                power_count += 1
+    async def fetch_device_power_sensors(self) -> None:
+        """One-time startup seeding of per-device power and energy values.
 
-        if power_count:
-            _LOGGER.debug("Polled initial power/energy for %d device sensor(s)", power_count)
+        Reads the value field from apartment/getStructure sensor data (already in
+        self.devices) for devices with power/energy sensors. If the structure has no
+        value (device hasn't reported yet), falls back to getSensorValue2 API call.
+        After startup, deviceSensorValue events keep values current.
+        """
+        seeded = 0
+        polled = 0
+        for dsuid, dev in self.devices.items():
+            for idx, sensor in enumerate(dev.get("sensors", [])):
+                stype = sensor.get("type")
+                if stype not in (SENSOR_ACTIVE_POWER, SENSOR_ACTIVE_ENERGY):
+                    continue
+                # Prefer value already in structure data
+                val = sensor.get("value")
+                if val is not None:
+                    try:
+                        self._device_sensor_values.setdefault(dsuid, {})[stype] = round(float(val), 2)
+                        seeded += 1
+                        continue
+                    except (TypeError, ValueError):
+                        pass
+                # Fallback: ask dSS for the sensor value directly
+                zone_id = dev.get("zone_id")
+                if zone_id is None:
+                    continue
+                try:
+                    result = await self.api.get_device_sensor_value(dsuid, idx)
+                    v = result.get("value")
+                    if v is not None:
+                        self._device_sensor_values.setdefault(dsuid, {})[stype] = round(float(v), 2)
+                        polled += 1
+                except (DigitalStromApiError, DigitalStromAuthError, Exception):
+                    pass
+
+        _LOGGER.debug(
+            "Startup power/energy seed: %d from structure, %d from API", seeded, polled
+        )
 
     def _find_device_with_sensor(self, zone_info: dict, sensor_type: int) -> str | None:
         """Find the first device in a zone that has a given sensor type."""
@@ -1317,7 +1336,7 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
             elif dsuid:
                 # Binary input state changes (contacts, smoke, etc.)
                 # Match dsuid case-insensitively and handle truncated dsuid from some dSS versions
-                _LOGGER.info(
+                _LOGGER.debug(
                     "stateChange event for device: dsuid=%s statename=%s state=%s",
                     dsuid[:16], state_name, state_value,
                 )
@@ -1331,17 +1350,15 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
                 if matched_dsuid:
                     is_active = state_value.lower() in ("active", "true", "1", "open")
                     self.set_device_on_state(matched_dsuid, is_active)
-                    _LOGGER.info(
+                    _LOGGER.debug(
                         "State change MATCHED: dsuid=%s matched=%s state=%s value=%s",
                         dsuid[:8], matched_dsuid[:8], state_name, state_value,
                     )
                     self.async_update_listeners()
                 else:
-                    _LOGGER.warning(
-                        "State change UNMATCHED: dsuid=%s (known devices: %s) state=%s value=%s",
-                        dsuid[:16],
-                        [d[:12] for d in self.devices.keys()][:10],
-                        state_name, state_value,
+                    _LOGGER.debug(
+                        "State change UNMATCHED: dsuid=%s state=%s value=%s",
+                        dsuid[:16], state_name, state_value,
                     )
 
     # =====================================================================
