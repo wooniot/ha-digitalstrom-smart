@@ -16,7 +16,7 @@ from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DOMAIN, MANUFACTURER, GROUP_JOKER, CONF_ENABLED_ZONES, APARTMENT_WEATHER_SCENES, WEATHER_TRANSLATION_KEYS, SCENE_RAIN, APARTMENT_ALARM_SCENES, ALARM_BINARY_SENSOR_KEYS, SCENE_FIRE
+from .const import DOMAIN, MANUFACTURER, GROUP_JOKER, CONF_ENABLED_ZONES, APARTMENT_WEATHER_SCENES, WEATHER_TRANSLATION_KEYS, SCENE_RAIN, APARTMENT_ALARM_SCENES, ALARM_BINARY_SENSOR_KEYS, SCENE_FIRE, SCENE_DOOR_BELL
 from .coordinator import DigitalStromCoordinator
 
 _LOGGER = logging.getLogger(__name__)
@@ -231,9 +231,11 @@ class DigitalStromAlarmBinarySensor(CoordinatorEntity, BinarySensorEntity):
 
     _DEVICE_CLASSES = {
         SCENE_FIRE: BinarySensorDeviceClass.SMOKE,
+        SCENE_DOOR_BELL: None,  # Doorbell: no device class → active/inactive, not safe/unsafe
     }
     _ICONS = {
         SCENE_FIRE: "mdi:fire",
+        SCENE_DOOR_BELL: "mdi:doorbell",
     }
 
     def __init__(
