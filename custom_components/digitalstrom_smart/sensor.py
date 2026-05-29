@@ -187,22 +187,25 @@ async def async_setup_entry(
         dev_name = dev.get("name", "")
         for sensor in dev.get("sensors", []):
             stype = sensor.get("type", -1)
-            if stype in DEVICE_SENSOR_MAP:
-                sensor_config = DEVICE_SENSOR_MAP[stype]
-                # Power/energy sensors always get an entity (value arrives via events)
-                if sensor_config.get("per_device"):
-                    has_value = True
-                else:
-                    has_value = (
-                        sensor.get("value") is not None
-                        or coordinator.get_device_sensor_value(dsuid, stype) is not None
+            if stype not in DEVICE_SENSOR_MAP:
+                continue
+            sensor_config = DEVICE_SENSOR_MAP[stype]
+            # Energy (Wh cumulative) is PRO — power (W) stays FREE
+            if stype == SENSOR_ACTIVE_ENERGY and not coordinator.pro_enabled:
+                continue
+            if sensor_config.get("per_device"):
+                has_value = True
+            else:
+                has_value = (
+                    sensor.get("value") is not None
+                    or coordinator.get_device_sensor_value(dsuid, stype) is not None
+                )
+            if has_value:
+                entities.append(
+                    DigitalStromDeviceSensor(
+                        coordinator, dsuid, dev, stype, sensor_config
                     )
-                if has_value:
-                    entities.append(
-                        DigitalStromDeviceSensor(
-                            coordinator, dsuid, dev, stype, sensor_config
-                        )
-                    )
+                )
 
     # --- PRO: Outdoor weather sensors ---
     if coordinator.pro_enabled and coordinator.outdoor_sensors:
@@ -214,23 +217,24 @@ async def async_setup_entry(
                     )
                 )
 
-    # --- FREE: Per-circuit (dSM) power + energy sensors ---
-    if coordinator.circuits:
+    # --- PRO: Per-circuit (dSM) power + energy sensors ---
+    if coordinator.pro_enabled and coordinator.circuits:
         for circuit in coordinator.circuits:
             dsuid = circuit.get("dSUID", "")
             if dsuid:
                 entities.append(DigitalStromCircuitSensor(coordinator, circuit))
                 entities.append(DigitalStromCircuitEnergySensor(coordinator, circuit))
 
-    # --- FREE: Apartment-level energy (kWh) — sum of all dSMs ---
-    if coordinator.circuits:
+    # --- PRO: Apartment-level energy (kWh) — sum of all dSMs ---
+    if coordinator.pro_enabled and coordinator.circuits:
         entities.append(DigitalStromApartmentEnergySensor(coordinator))
 
-    # --- FREE: User Defined States (text sensors; binary ones live in binary_sensor) ---
-    for name, data in coordinator.user_states.items():
-        if _is_binary_state(data):
-            continue
-        entities.append(DigitalStromUserStateSensor(coordinator, name))
+    # --- PRO: User Defined States (text sensors; binary ones live in binary_sensor) ---
+    if coordinator.pro_enabled:
+        for name, data in coordinator.user_states.items():
+            if _is_binary_state(data):
+                continue
+            entities.append(DigitalStromUserStateSensor(coordinator, name))
 
     # Configurator timers/klokken are exposed as switch entities only
     # (one entity per timer to avoid duplicated sensor+switch pairs).

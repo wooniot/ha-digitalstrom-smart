@@ -29,12 +29,15 @@ async def async_setup_entry(
     data = hass.data[DOMAIN][entry.entry_id]
     coordinator: DigitalStromCoordinator = data["coordinator"]
 
-    entities: list[ButtonEntity] = [
-        DigitalStromUserActionButton(coordinator, action)
-        for action in coordinator.user_actions
-    ]
-    if entities:
-        _LOGGER.info("Adding %d User Defined Action buttons", len(entities))
+    # --- PRO: User Defined Actions ---
+    entities: list[ButtonEntity] = []
+    if coordinator.pro_enabled:
+        entities = [
+            DigitalStromUserActionButton(coordinator, action)
+            for action in coordinator.user_actions
+        ]
+        if entities:
+            _LOGGER.info("Adding %d User Defined Action buttons (PRO)", len(entities))
 
     # One run-once button per Configurator timer
     timer_count = 0

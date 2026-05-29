@@ -659,32 +659,38 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
 
         _LOGGER.debug("Polled %d sensor values from zone API", found_count)
 
-        # Throttled power/energy poll: every 10th call (~5 min at 30s interval).
-        # deviceSensorValue events update values in real time, but not all dSS
-        # firmware versions fire them reliably for power sensors.
+        # Power (W) — poll every cycle like DSM circuits (René: same cadence as groups).
+        await self._poll_device_power_sensors(energy=False)
+
+        # Energy (Wh) — throttled to every 10th call (~5 min), cumulative value changes slowly.
         self._power_poll_counter += 1
         if self._power_poll_counter >= 10:
             self._power_poll_counter = 0
-            await self._poll_device_power_sensors()
+            await self._poll_device_power_sensors(energy=True)
 
-    async def _poll_device_power_sensors(self) -> None:
-        """Poll power/energy via getSensorValue2 for devices with power sensors."""
+    async def _poll_device_power_sensors(self, energy: bool = False) -> None:
+        """Poll per-device power (W) or energy (Wh) via getSensorValue2.
+
+        energy=False: only SENSOR_ACTIVE_POWER (type 4) — called every 30s.
+        energy=True:  only SENSOR_ACTIVE_ENERGY (type 5) — called every ~5 min.
+        """
+        target_type = SENSOR_ACTIVE_ENERGY if energy else SENSOR_ACTIVE_POWER
         updated = 0
         for dsuid, dev in self.devices.items():
             for idx, sensor in enumerate(dev.get("sensors", [])):
-                stype = sensor.get("type")
-                if stype not in (SENSOR_ACTIVE_POWER, SENSOR_ACTIVE_ENERGY):
+                if sensor.get("type") != target_type:
                     continue
                 try:
                     result = await self.api.get_device_sensor_value(dsuid, idx)
                     v = result.get("value")
                     if v is not None:
-                        self._device_sensor_values.setdefault(dsuid, {})[stype] = round(float(v), 2)
+                        self._device_sensor_values.setdefault(dsuid, {})[target_type] = round(float(v), 2)
                         updated += 1
                 except (DigitalStromApiError, DigitalStromAuthError, Exception):
                     pass
         if updated:
-            _LOGGER.debug("Periodic power poll updated %d sensor value(s)", updated)
+            label = "energy" if energy else "power"
+            _LOGGER.debug("Periodic %s poll updated %d sensor value(s)", label, updated)
             self.async_update_listeners()
 
     async def fetch_device_power_sensors(self) -> None:

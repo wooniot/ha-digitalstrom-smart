@@ -118,14 +118,16 @@ async def async_setup_entry(
                 DigitalStromWeatherProtectionSensor(coordinator, scene_nr, name)
             )
 
-    # --- FREE: User Defined States that behave as binary (active/inactive) ---
-    for name, data in coordinator.user_states.items():
-        if _is_binary_state(data):
-            entities.append(DigitalStromUserBinaryState(coordinator, name))
+    # --- PRO: User Defined States that behave as binary (active/inactive) ---
+    if coordinator.pro_enabled:
+        for name, data in coordinator.user_states.items():
+            if _is_binary_state(data):
+                entities.append(DigitalStromUserBinaryState(coordinator, name))
 
-    # --- FREE: Configurator User Defined States (custom-states with proper names) ---
-    for sid, data in coordinator.custom_states.items():
-        entities.append(DigitalStromCustomState(coordinator, sid, data))
+    # --- PRO: Configurator User Defined States (custom-states with proper names) ---
+    if coordinator.pro_enabled:
+        for sid, data in coordinator.custom_states.items():
+            entities.append(DigitalStromCustomState(coordinator, sid, data))
 
     # --- FREE: Per-device output status for output-capable devices (lights, shades, ...) ---
     # Skip Jokers — they already have switch entities. All data via apartment/getDevices
