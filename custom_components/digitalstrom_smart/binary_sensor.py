@@ -16,7 +16,7 @@ from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DOMAIN, MANUFACTURER, GROUP_JOKER, CONF_ENABLED_ZONES, APARTMENT_WEATHER_SCENES, WEATHER_TRANSLATION_KEYS, SCENE_RAIN
+from .const import DOMAIN, MANUFACTURER, GROUP_JOKER, CONF_ENABLED_ZONES, APARTMENT_WEATHER_SCENES, WEATHER_TRANSLATION_KEYS, SCENE_RAIN, APARTMENT_ALARM_SCENES, ALARM_BINARY_SENSOR_KEYS, SCENE_FIRE
 from .coordinator import DigitalStromCoordinator
 
 _LOGGER = logging.getLogger(__name__)
@@ -106,6 +106,10 @@ async def async_setup_entry(
     # --- PRO: Rain detection from outdoor weather data ---
     if coordinator.pro_enabled and coordinator.outdoor_sensors and "rain" in coordinator.outdoor_sensors:
         entities.append(DigitalStromRainSensor(coordinator))
+
+    # --- FREE: Apartment alarm binary sensors (Fire/Brand, Alarm 1-4, Panic, Doorbell) ---
+    for scene_nr, name in APARTMENT_ALARM_SCENES.items():
+        entities.append(DigitalStromAlarmBinarySensor(coordinator, scene_nr, name))
 
     # --- PRO: Weather protection binary sensors (Wind, Rain scenes) ---
     if coordinator.pro_enabled:
@@ -210,6 +214,52 @@ class DigitalStromJokerBinarySensor(CoordinatorEntity, BinarySensorEntity):
         if state is None:
             return None
         return not state if self._invert else state
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        self.async_write_ha_state()
+
+
+class DigitalStromAlarmBinarySensor(CoordinatorEntity, BinarySensorEntity):
+    """Apartment-level alarm binary sensor (Fire, Alarm 1-4, Panic, Doorbell).
+
+    Active when the dSS has fired the corresponding alarm scene and not yet
+    reset it. Fire (Alarm 3) uses SMOKE device class; others use SAFETY.
+    """
+
+    _attr_has_entity_name = True
+
+    _DEVICE_CLASSES = {
+        SCENE_FIRE: BinarySensorDeviceClass.SMOKE,
+    }
+    _ICONS = {
+        SCENE_FIRE: "mdi:fire",
+    }
+
+    def __init__(
+        self, coordinator: DigitalStromCoordinator, scene_nr: int, name: str,
+    ) -> None:
+        super().__init__(coordinator)
+        self._scene_nr = scene_nr
+        dss_id = coordinator.dss_id
+        self._attr_unique_id = f"ds_{dss_id}_alarm_{scene_nr}"
+        tkey = ALARM_BINARY_SENSOR_KEYS.get(scene_nr)
+        if tkey:
+            self._attr_translation_key = tkey
+        else:
+            self._attr_name = name
+        self._attr_device_class = self._DEVICE_CLASSES.get(scene_nr, BinarySensorDeviceClass.SAFETY)
+        self._attr_icon = self._ICONS.get(scene_nr, "mdi:alert")
+        self._attr_device_info = {
+            "identifiers": {(DOMAIN, f"{dss_id}_apartment")},
+            "name": "Digital Strom Server",
+            "manufacturer": MANUFACTURER,
+            "model": "dSS",
+        }
+
+    @property
+    def is_on(self) -> bool:
+        return self.coordinator.is_alarm_active(self._scene_nr)
 
     @callback
     def _handle_coordinator_update(self) -> None:

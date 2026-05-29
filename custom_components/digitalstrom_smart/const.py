@@ -127,6 +127,16 @@ ALARM_TRANSLATION_KEYS = {
     SCENE_DOOR_BELL: "doorbell",
 }
 
+# Alarm binary sensor: scene_nr -> translation key (separate from switch keys)
+ALARM_BINARY_SENSOR_KEYS = {
+    SCENE_ALARM_1: "alarm_1_active",
+    SCENE_ALARM_2: "alarm_2_active",
+    SCENE_ALARM_3: "fire",
+    SCENE_ALARM_4: "alarm_4_active",
+    SCENE_PANIC: "panic_active",
+    SCENE_DOOR_BELL: "doorbell_active",
+}
+
 # Weather protection: scene_nr -> translation key
 WEATHER_TRANSLATION_KEYS = {
     SCENE_RAIN: "rain_protection",
