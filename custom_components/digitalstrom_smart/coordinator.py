@@ -113,9 +113,6 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
         # Per-device runtime output status from apartment/getDevices: {dsuid: {"on", "is_present", "is_valid"}}
         self._device_runtime: dict[str, dict] = {}
 
-        # Power sensor poll throttle: poll getSensorValue2 every 10th fetch_device_sensors call
-        self._power_poll_counter: int = 0
-
         # Metering data
         self._circuit_power: dict[str, int] = {}  # dsuid -> watts
         self._circuit_energy_ws: dict[str, int] = {}  # dsuid -> cumulative Watt-seconds
@@ -658,40 +655,60 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
                         found_count += 1
 
         _LOGGER.debug("Polled %d sensor values from zone API", found_count)
-
-        # Power (W) — poll every cycle like DSM circuits (René: same cadence as groups).
-        await self._poll_device_power_sensors(energy=False)
-
-        # Energy (Wh) — throttled to every 10th call (~5 min), cumulative value changes slowly.
-        self._power_poll_counter += 1
-        if self._power_poll_counter >= 10:
-            self._power_poll_counter = 0
-            await self._poll_device_power_sensors(energy=True)
+        # Power/energy polling runs in _power_poll_loop (background task) — not here.
+        # Polling here would block the DataUpdateCoordinator refresh on large installations.
 
     async def _poll_device_power_sensors(self, energy: bool = False) -> None:
         """Poll per-device power (W) or energy (Wh) via getSensorValue2.
 
-        energy=False: only SENSOR_ACTIVE_POWER (type 4) — called every 30s.
-        energy=True:  only SENSOR_ACTIVE_ENERGY (type 5) — called every ~5 min.
+        Runs concurrently across all devices to avoid blocking on large installations.
+        energy=False: SENSOR_ACTIVE_POWER (type 4) — called every 30s via _power_poll_loop.
+        energy=True:  SENSOR_ACTIVE_ENERGY (type 5) — called every ~5 min.
         """
         target_type = SENSOR_ACTIVE_ENERGY if energy else SENSOR_ACTIVE_POWER
-        updated = 0
+
+        # Collect (dsuid, sensor_index) pairs to poll
+        targets = []
         for dsuid, dev in self.devices.items():
             for idx, sensor in enumerate(dev.get("sensors", [])):
-                if sensor.get("type") != target_type:
-                    continue
-                try:
-                    result = await self.api.get_device_sensor_value(dsuid, idx)
-                    v = result.get("value")
-                    if v is not None:
-                        self._device_sensor_values.setdefault(dsuid, {})[target_type] = round(float(v), 2)
-                        updated += 1
-                except (DigitalStromApiError, DigitalStromAuthError, Exception):
-                    pass
-        if updated:
-            label = "energy" if energy else "power"
-            _LOGGER.debug("Periodic %s poll updated %d sensor value(s)", label, updated)
-            self.async_update_listeners()
+                if sensor.get("type") == target_type:
+                    targets.append((dsuid, idx))
+
+        if not targets:
+            return
+
+        async def _fetch_one(dsuid: str, idx: int) -> None:
+            try:
+                result = await self.api.get_device_sensor_value(dsuid, idx)
+                v = result.get("value")
+                if v is not None:
+                    self._device_sensor_values.setdefault(dsuid, {})[target_type] = round(float(v), 2)
+            except (DigitalStromApiError, DigitalStromAuthError, Exception):
+                pass
+
+        await asyncio.gather(*(_fetch_one(d, i) for d, i in targets))
+        label = "energy" if energy else "power"
+        _LOGGER.debug("Periodic %s poll completed for %d device(s)", label, len(targets))
+        self.async_update_listeners()
+
+    async def _power_poll_loop(self) -> None:
+        """Background loop: poll per-device power every 30s, energy every 5 min.
+
+        Runs as a separate task so it never blocks the DataUpdateCoordinator refresh.
+        """
+        energy_counter = 0
+        while True:
+            try:
+                await asyncio.sleep(30)
+                await self._poll_device_power_sensors(energy=False)
+                energy_counter += 1
+                if energy_counter >= 10:
+                    energy_counter = 0
+                    await self._poll_device_power_sensors(energy=True)
+            except asyncio.CancelledError:
+                return
+            except Exception as err:
+                _LOGGER.debug("Power poll loop error: %s", err)
 
     async def fetch_device_power_sensors(self) -> None:
         """One-time startup seeding of per-device power and energy values.
@@ -1125,6 +1142,11 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
         # Start fast binary input polling (contacts, doors, windows)
         self._binary_poll_task = self.hass.async_create_background_task(
             self._binary_poll_loop(), f"{DOMAIN}_binary_poll"
+        )
+
+        # Start power/energy polling as a background task (non-blocking, concurrent)
+        self.hass.async_create_background_task(
+            self._power_poll_loop(), f"{DOMAIN}_power_poll"
         )
 
     async def _binary_poll_loop(self) -> None:
