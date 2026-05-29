@@ -51,6 +51,8 @@ from .const import (
     USER_ACTION_SOURCE,
     SKIP_USER_STATES,
     STATE_VALUE_ACTIVE,
+    SENSOR_ACTIVE_POWER,
+    SENSOR_ACTIVE_ENERGY,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -653,6 +655,28 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
                         found_count += 1
 
         _LOGGER.debug("Polled %d sensor values from zone API", found_count)
+
+        # Poll initial power/energy for devices with SENSOR_ACTIVE_POWER or SENSOR_ACTIVE_ENERGY.
+        # These values only arrive via deviceSensorValue events after startup, which may take
+        # a long time (or never) for infrequently-reporting devices like SW-KL200.
+        power_count = 0
+        for dsuid, dev in self.devices.items():
+            sensor_types = {s.get("type") for s in dev.get("sensors", [])}
+            if not (SENSOR_ACTIVE_POWER in sensor_types or SENSOR_ACTIVE_ENERGY in sensor_types):
+                continue
+            zone_id = dev.get("zone_id")
+            if zone_id is None:
+                continue
+            power_w, energy_wh = await self.api.get_device_consumption(zone_id, dsuid)
+            if power_w is not None:
+                self._device_sensor_values.setdefault(dsuid, {})[SENSOR_ACTIVE_POWER] = round(power_w, 2)
+                power_count += 1
+            if energy_wh is not None:
+                self._device_sensor_values.setdefault(dsuid, {})[SENSOR_ACTIVE_ENERGY] = round(energy_wh, 2)
+                power_count += 1
+
+        if power_count:
+            _LOGGER.debug("Polled initial power/energy for %d device sensor(s)", power_count)
 
     def _find_device_with_sensor(self, zone_info: dict, sensor_type: int) -> str | None:
         """Find the first device in a zone that has a given sensor type."""

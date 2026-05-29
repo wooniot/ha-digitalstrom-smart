@@ -309,6 +309,41 @@ class DigitalStromApi:
         result = await self._request("/json/apartment/getConsumption")
         return result.get("consumption", 0)
 
+    async def get_device_consumption(self, zone_id: int, dsuid: str) -> tuple[float | None, float | None]:
+        """Get current power (W) and cumulative energy (Wh) for a single device.
+
+        Queries the dSS property tree directly. Returns (power_w, energy_wh);
+        either may be None if the device does not report that value.
+        """
+        try:
+            result = await self._request(
+                "/json/property/query2",
+                {"query": f"/apartment/zones/zone{zone_id}/devices/{dsuid}/*(consumption,energyMeterValue)"},
+            )
+        except Exception:
+            return None, None
+
+        power = None
+        energy = None
+        if isinstance(result, dict):
+            c = result.get("consumption")
+            if isinstance(c, dict):
+                v = c.get("value")
+                if v is not None:
+                    try:
+                        power = float(v)
+                    except (TypeError, ValueError):
+                        pass
+            e = result.get("energyMeterValue")
+            if isinstance(e, dict):
+                v = e.get("value")
+                if v is not None:
+                    try:
+                        energy = float(v)
+                    except (TypeError, ValueError):
+                        pass
+        return power, energy
+
     async def get_temperature_values(self) -> list[dict]:
         """Get temperature control values per zone."""
         result = await self._request("/json/apartment/getTemperatureControlValues")
