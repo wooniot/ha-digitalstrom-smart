@@ -109,11 +109,14 @@ class DigitalStromScene(Scene):
         dss_id = coordinator.dss_id
         group_label = GROUP_NAMES.get(group, f"G{group}")
         self._attr_unique_id = f"ds_{dss_id}_{zone_id}_g{group}_scene_{scene_number}"
-        # Use translation_key for default scenes, hardcoded name for user-defined
+        # Use translation_key for default scenes; custom-named scenes use
+        # the name as-is (no English group prefix — zone device provides context).
         has_custom_name = (zone_id, group, scene_number) in coordinator.scene_names
         translation_key = SCENE_TRANSLATION_KEYS.get((group, scene_number))
         if not has_custom_name and translation_key:
             self._attr_translation_key = translation_key
+        elif has_custom_name:
+            self._attr_name = scene_name
         else:
             self._attr_name = f"{group_label} {scene_name}"
         self._attr_device_info = {
