@@ -659,97 +659,46 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
         # Polling here would block the DataUpdateCoordinator refresh on large installations.
 
     async def _poll_device_power_sensors(self, energy: bool = False) -> None:
-        """Poll per-device power (W) or energy (Wh) via getSensorValue2.
+        """Per-device getSensorValue2 polling — UITGESCHAKELD (v3.3.22).
 
-        Runs concurrently across all devices to avoid blocking on large installations.
-        energy=False: SENSOR_ACTIVE_POWER (type 4) — called every 30s via _power_poll_loop.
-        energy=True:  SENSOR_ACTIVE_ENERGY (type 5) — called every ~5 min.
+        Op grote installaties veroorzaakte asyncio.gather() honderden parallelle
+        requests naar de dSS. SW-series apparaten ondersteunen getSensorValue2 niet
+        → 403 Forbidden flood → dSS overbelast en onbereikbaar.
+
+        Per-device waarden worden nu uitsluitend via deviceSensorValue events
+        bijgewerkt (event-driven, dSS pusht zelf). Zone-/circuit-level energie
+        via fetch_circuit_data() werkt gewoon door.
         """
-        target_type = SENSOR_ACTIVE_ENERGY if energy else SENSOR_ACTIVE_POWER
-
-        # Collect (dsuid, sensor_index) pairs to poll
-        targets = []
-        for dsuid, dev in self.devices.items():
-            for idx, sensor in enumerate(dev.get("sensors", [])):
-                if sensor.get("type") == target_type:
-                    targets.append((dsuid, idx))
-
-        if not targets:
-            return
-
-        async def _fetch_one(dsuid: str, idx: int) -> None:
-            try:
-                result = await self.api.get_device_sensor_value(dsuid, idx)
-                v = result.get("value")
-                if v is not None:
-                    self._device_sensor_values.setdefault(dsuid, {})[target_type] = round(float(v), 2)
-            except (DigitalStromApiError, DigitalStromAuthError, Exception):
-                pass
-
-        await asyncio.gather(*(_fetch_one(d, i) for d, i in targets))
-        label = "energy" if energy else "power"
-        _LOGGER.debug("Periodic %s poll completed for %d device(s)", label, len(targets))
-        self.async_update_listeners()
+        _LOGGER.debug("Per-device power poll skipped (disabled in v3.3.22)")
 
     async def _power_poll_loop(self) -> None:
-        """Background loop: poll per-device power every 30s, energy every 5 min.
+        """Background poll loop — UITGESCHAKELD (v3.3.22).
 
-        Runs as a separate task so it never blocks the DataUpdateCoordinator refresh.
+        Zie _poll_device_power_sensors voor toelichting.
         """
-        energy_counter = 0
-        while True:
-            try:
-                await asyncio.sleep(30)
-                await self._poll_device_power_sensors(energy=False)
-                energy_counter += 1
-                if energy_counter >= 10:
-                    energy_counter = 0
-                    await self._poll_device_power_sensors(energy=True)
-            except asyncio.CancelledError:
-                return
-            except Exception as err:
-                _LOGGER.debug("Power poll loop error: %s", err)
+        return
 
     async def fetch_device_power_sensors(self) -> None:
-        """One-time startup seeding of per-device power and energy values.
+        """Startup seeding via getSensorValue2 — UITGESCHAKELD (v3.3.22).
 
-        Reads the value field from apartment/getStructure sensor data (already in
-        self.devices) for devices with power/energy sensors. If the structure has no
-        value (device hasn't reported yet), falls back to getSensorValue2 API call.
-        After startup, deviceSensorValue events keep values current.
+        Seed initiële waarden nu alleen uit structure data (geen API-calls).
+        Verdere updates via deviceSensorValue events.
         """
         seeded = 0
-        polled = 0
         for dsuid, dev in self.devices.items():
-            for idx, sensor in enumerate(dev.get("sensors", [])):
+            for sensor in dev.get("sensors", []):
                 stype = sensor.get("type")
                 if stype not in (SENSOR_ACTIVE_POWER, SENSOR_ACTIVE_ENERGY):
                     continue
-                # Prefer value already in structure data
                 val = sensor.get("value")
                 if val is not None:
                     try:
                         self._device_sensor_values.setdefault(dsuid, {})[stype] = round(float(val), 2)
                         seeded += 1
-                        continue
                     except (TypeError, ValueError):
                         pass
-                # Fallback: ask dSS for the sensor value directly
-                zone_id = dev.get("zone_id")
-                if zone_id is None:
-                    continue
-                try:
-                    result = await self.api.get_device_sensor_value(dsuid, idx)
-                    v = result.get("value")
-                    if v is not None:
-                        self._device_sensor_values.setdefault(dsuid, {})[stype] = round(float(v), 2)
-                        polled += 1
-                except (DigitalStromApiError, DigitalStromAuthError, Exception):
-                    pass
 
-        _LOGGER.debug(
-            "Startup power/energy seed: %d from structure, %d from API", seeded, polled
-        )
+        _LOGGER.debug("Startup power seed: %d devices from structure (no API calls)", seeded)
 
     def _find_device_with_sensor(self, zone_info: dict, sensor_type: int) -> str | None:
         """Find the first device in a zone that has a given sensor type."""
