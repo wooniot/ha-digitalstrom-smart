@@ -1115,6 +1115,10 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
                 _LOGGER.warning("Event poll error: %s, retrying in %ds", err, self._reconnect_delay)
                 await self._backoff()
 
+            except asyncio.TimeoutError:
+                _LOGGER.debug("Event poll timed out, retrying")
+                await self._backoff()
+
             except asyncio.CancelledError:
                 return
 
@@ -1254,7 +1258,7 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
             # Apartment-level state changes (rain, etc.) — no dsuid
             # dSS format: StateApartment;rain;1;active / StateApartment;rain;2;inactive
             if state_name == "rain":
-                is_active = state_value.lower() in ("active", "true", "1")
+                is_active = str(state_value).lower() in ("active", "true", "1")
                 if is_active:
                     self._apartment_alarms.add(SCENE_RAIN)
                 else:
@@ -1267,7 +1271,7 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
             elif state_name == "heating_system_mode":
                 # Heating controller: active/1=heating, inactive/2/off/cooling=cooling
                 was_cooling = self._heating_system_cooling
-                self._heating_system_cooling = state_value.lower() in (
+                self._heating_system_cooling = str(state_value).lower() in (
                     "inactive", "off", "cooling", "2",
                 )
                 if was_cooling != self._heating_system_cooling:

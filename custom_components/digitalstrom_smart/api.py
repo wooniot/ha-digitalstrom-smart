@@ -39,6 +39,7 @@ def _build_digest_header(
     global _nc_counter
     _nc_counter += 1
 
+    # MD5 is mandated by RFC 2617 (HTTP Digest Authentication) — not a choice.
     ha1 = hashlib.md5(f"{username}:{realm}:{password}".encode()).hexdigest()
     ha2 = hashlib.md5(f"{method}:{uri}".encode()).hexdigest()
 
