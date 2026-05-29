@@ -98,6 +98,10 @@ class DigitalStromApi:
         self._digest_params: dict = {}
         self._session = session
         self._own_session = session is None
+        # dSS devices ship with self-signed certificates on the local LAN and
+        # there is no CA chain to verify against. Certificate verification is
+        # intentionally disabled — connections are always to a known local IP
+        # entered by the user during setup.
         self._ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
         self._ssl_context.check_hostname = False
         self._ssl_context.verify_mode = ssl.CERT_NONE
@@ -320,7 +324,8 @@ class DigitalStromApi:
                 "/json/property/query2",
                 {"query": f"/apartment/zones/zone{zone_id}/devices/{dsuid}/*(consumption,energyMeterValue)"},
             )
-        except Exception:
+        except (DigitalStromApiError, DigitalStromAuthError, aiohttp.ClientError) as err:
+            _LOGGER.debug("Could not fetch device consumption for %s: %s", dsuid[:8], err)
             return None, None
 
         power = None

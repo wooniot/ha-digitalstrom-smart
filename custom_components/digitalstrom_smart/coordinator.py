@@ -640,7 +640,7 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
         for zone_id, zone_info in self.zones.items():
             try:
                 data = await self.api.get_zone_sensor_values(zone_id)
-            except (DigitalStromApiError, Exception):
+            except (DigitalStromApiError, DigitalStromAuthError):
                 continue
 
             for entry in data.get("values", []):
