@@ -113,6 +113,9 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
         # Per-device runtime output status from apartment/getDevices: {dsuid: {"on", "is_present", "is_valid"}}
         self._device_runtime: dict[str, dict] = {}
 
+        # Power sensor poll throttle: poll getSensorValue2 every 10th fetch_device_sensors call
+        self._power_poll_counter: int = 0
+
         # Metering data
         self._circuit_power: dict[str, int] = {}  # dsuid -> watts
         self._circuit_energy_ws: dict[str, int] = {}  # dsuid -> cumulative Watt-seconds
@@ -655,6 +658,34 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
                         found_count += 1
 
         _LOGGER.debug("Polled %d sensor values from zone API", found_count)
+
+        # Throttled power/energy poll: every 10th call (~5 min at 30s interval).
+        # deviceSensorValue events update values in real time, but not all dSS
+        # firmware versions fire them reliably for power sensors.
+        self._power_poll_counter += 1
+        if self._power_poll_counter >= 10:
+            self._power_poll_counter = 0
+            await self._poll_device_power_sensors()
+
+    async def _poll_device_power_sensors(self) -> None:
+        """Poll power/energy via getSensorValue2 for devices with power sensors."""
+        updated = 0
+        for dsuid, dev in self.devices.items():
+            for idx, sensor in enumerate(dev.get("sensors", [])):
+                stype = sensor.get("type")
+                if stype not in (SENSOR_ACTIVE_POWER, SENSOR_ACTIVE_ENERGY):
+                    continue
+                try:
+                    result = await self.api.get_device_sensor_value(dsuid, idx)
+                    v = result.get("value")
+                    if v is not None:
+                        self._device_sensor_values.setdefault(dsuid, {})[stype] = round(float(v), 2)
+                        updated += 1
+                except (DigitalStromApiError, DigitalStromAuthError, Exception):
+                    pass
+        if updated:
+            _LOGGER.debug("Periodic power poll updated %d sensor value(s)", updated)
+            self.async_update_listeners()
 
     async def fetch_device_power_sensors(self) -> None:
         """One-time startup seeding of per-device power and energy values.
