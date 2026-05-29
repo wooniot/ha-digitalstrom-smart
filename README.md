@@ -37,10 +37,11 @@ Unlike traditional per-device polling integrations, Digital Strom Smart uses the
 - **Scene activation** with imported dS scene names (the recommended way to control Digital Strom)
 - **Temperature sensors** per zone (including rooms without heating, using any available source: zone sensors, device sensors)
 - **Device sensors** — Ulux and similar devices expose CO2, brightness, temperature, and humidity as individual sensor entities
-- **Per-device power measurement** — SW-KL200, SW-ZWS200, SW-SSL200, and SW-UMR200 (output 1) report real-time power consumption in Watts when the metering option is enabled in the dSS Configurator
+- **Per-device power measurement** — SW-KL200, SW-ZWS200, SW-SSL200, and SW-UMR200 report real-time power (W) and energy (Wh) — values are available immediately after HA restart, not just after the first event
 - **Energy monitoring** (apartment-level power consumption)
 - **Per-circuit energy monitoring** — power **and** lifetime kWh per dSM meter, each as its own device, ready for the **HA Energy Dashboard**
 - **Apartment kWh sensor** — aggregated cumulative energy across all dSMs
+- **Alarm binary sensors** — Fire/Brand, Alarm 1/2/4, Panic, and Doorbell appear as binary sensors under the Digital Strom Server device, with live updates from dSS alarm events
 - **User Defined Actions** — actions configured in the dSS Configurator appear as Home Assistant **buttons**
 - **User Defined States** — custom and apartment-wide dSS states appear as **sensors / binary sensors** with live updates from `stateChange` events
 - **Event-driven** — instant state updates when someone uses a wall switch
@@ -131,6 +132,12 @@ Per-circuit (dSM meters):
 - `sensor.<circuit_name>_power` — Instantaneous power per dSM meter (W)
 - `sensor.<circuit_name>_energy` — Cumulative lifetime energy per dSM (kWh, `total_increasing`)
 - `sensor.dss_energy_consumption` — Apartment-wide kWh, sum of all dSMs (Energy Dashboard ready)
+
+Alarm sensors (Digital Strom Server device):
+- `binary_sensor.dss_fire` — Fire alarm (Brand), device class: smoke
+- `binary_sensor.dss_alarm_1` / `alarm_2` / `alarm_4` — Alarm scenes 1, 2, 4
+- `binary_sensor.dss_panic` — Panic alarm
+- `binary_sensor.dss_doorbell` — Doorbell active state
 
 User Defined Actions & States (apartment):
 - `button.<action_name>` — One button per action defined in the dSS Configurator

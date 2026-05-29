@@ -95,7 +95,13 @@
     },
     "binary_sensor": {
       "rain": { "name": "Regen" },
-      "rain_protection": { "name": "Regenbescherming" }
+      "rain_protection": { "name": "Regenbescherming" },
+      "fire": { "name": "Brand" },
+      "alarm_1_active": { "name": "Alarm 1" },
+      "alarm_2_active": { "name": "Alarm 2" },
+      "alarm_4_active": { "name": "Alarm 4" },
+      "panic_active": { "name": "Paniek" },
+      "doorbell_active": { "name": "Deurbel" }
     },
     "scene": {
       "light_off": { "name": "Verlichting Uit" },
