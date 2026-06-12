@@ -12,16 +12,31 @@
       "approve_token": {
         "title": "Anwendung Genehmigen",
         "description": "Genehmigen Sie die WoonIoT-Verbindung in Ihrem Digital Strom Konfigurator:\n\n1. Öffnen Sie die dSS Admin-Oberfläche in Ihrem Browser\n2. Gehen Sie zu System > Zugriffsberechtigung\n3. Suchen Sie 'WoonIoT HA Connect' und setzen Sie das Häkchen\n\nToken: {token}\n\nKlicken Sie nach der Genehmigung auf Absenden."
+      },
+      "discovery_confirm": {
+        "title": "Digital-Strom-Server gefunden",
+        "description": "Ein Digital-Strom-Server wurde unter {host} gefunden. Möchten Sie ihn hinzufügen?"
+      },
+      "reconfigure": {
+        "title": "dSS-Adresse ändern",
+        "description": "Geben Sie die neue IP-Adresse Ihres dSS ein. Ihre Pro-Lizenz und alle Einstellungen bleiben erhalten, solange es derselbe Server ist.",
+        "data": {
+          "host": "IP-Adresse",
+          "port": "Port"
+        }
       }
     },
     "error": {
       "cannot_connect": "Verbindung zum dSS nicht möglich. Überprüfen Sie die IP-Adresse und ob der Server in Ihrem lokalen Netzwerk erreichbar ist.",
-      "token_not_approved": "Token noch nicht genehmigt. Genehmigen Sie die Verbindung in der dSS Admin-Oberfläche unter Zugriffsberechtigung."
+      "token_not_approved": "Token noch nicht genehmigt. Genehmigen Sie die Verbindung in der dSS Admin-Oberfläche unter Zugriffsberechtigung.",
+      "wrong_device": "Diese Adresse gehört zu einem anderen Digital-Strom-Server. Geben Sie die Adresse desselben dSS ein, um Lizenz und Einstellungen zu behalten."
     },
     "abort": {
       "cannot_connect": "Verbindung zum dSS nach der Authentifizierung nicht möglich.",
-      "already_configured": "Dieser Digital Strom Server ist bereits konfiguriert."
-    }
+      "already_configured": "Dieser Digital Strom Server ist bereits konfiguriert.",
+      "reconfigure_successful": "Die dSS-Adresse wurde aktualisiert."
+    },
+    "flow_title": "{host}"
   },
   "options": {
     "step": {

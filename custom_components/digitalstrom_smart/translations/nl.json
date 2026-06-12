@@ -12,16 +12,31 @@
       "approve_token": {
         "title": "Applicatie Goedkeuren",
         "description": "Keur de WoonIoT verbinding goed in je Digital Strom Configurator:\n\n1. Open de dSS admin interface in je browser\n2. Ga naar Systeem > Toegangsautorisatie\n3. Zoek 'WoonIoT HA Connect' en vink het aan\n\nToken: {token}\n\nKlik op Verzenden na goedkeuring."
+      },
+      "discovery_confirm": {
+        "title": "Digital Strom-server gevonden",
+        "description": "Er is een Digital Strom-server gevonden op {host}. Wil je deze toevoegen?"
+      },
+      "reconfigure": {
+        "title": "dSS-adres wijzigen",
+        "description": "Voer het nieuwe IP-adres van je dSS in. Je Pro-licentie en alle instellingen blijven behouden, zolang het dezelfde server is.",
+        "data": {
+          "host": "IP-adres",
+          "port": "Poort"
+        }
       }
     },
     "error": {
       "cannot_connect": "Kan geen verbinding maken met dSS. Controleer het IP-adres en of de server bereikbaar is op je lokale netwerk.",
-      "token_not_approved": "Token nog niet goedgekeurd. Keur de verbinding goed in dSS admin onder Toegangsautorisatie."
+      "token_not_approved": "Token nog niet goedgekeurd. Keur de verbinding goed in dSS admin onder Toegangsautorisatie.",
+      "wrong_device": "Dat adres hoort bij een andere Digital Strom-server. Voer het adres van dezelfde dSS in om je licentie en instellingen te behouden."
     },
     "abort": {
       "cannot_connect": "Kon geen verbinding maken met dSS na authenticatie.",
-      "already_configured": "Deze Digital Strom server is al geconfigureerd."
-    }
+      "already_configured": "Deze Digital Strom server is al geconfigureerd.",
+      "reconfigure_successful": "Het dSS-adres is bijgewerkt."
+    },
+    "flow_title": "{host}"
   },
   "options": {
     "step": {

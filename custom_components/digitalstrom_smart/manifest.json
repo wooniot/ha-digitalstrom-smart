@@ -4,10 +4,13 @@
   "codeowners": ["@wooniot"],
   "config_flow": true,
   "dependencies": [],
+  "dhcp": [
+    { "macaddress": "A8995C*" }
+  ],
   "documentation": "https://github.com/wooniot/ha-digitalstrom-smart",
   "integration_type": "hub",
   "iot_class": "local_push",
   "issue_tracker": "https://github.com/wooniot/ha-digitalstrom-smart/issues",
   "requirements": ["aiohttp>=3.8.0"],
-  "version": "3.4.0"
+  "version": "3.5.0"
 }

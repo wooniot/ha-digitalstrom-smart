@@ -68,6 +68,83 @@ class DigitalStromSmartConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             errors=errors,
         )
 
+    async def _fetch_dss_id(self, host: str, port: int) -> str | None:
+        """Connect (unauthenticated) and return the dSS MachineID, or None.
+
+        Used to identify a dSS by its stable machine id so the Pro license — which is
+        bound to the machine id, not the IP — survives an IP change."""
+        api = DigitalStromApi(host=host, port=port)
+        try:
+            version = await api.get_version()
+        except DigitalStromApiError:
+            return None
+        finally:
+            await api.close()
+        return version.get("dSUID", "") or version.get("MachineID", "") or None
+
+    async def async_step_dhcp(self, discovery_info):
+        """Auto-discovered via DHCP. Bind by machine id so an IP change self-heals."""
+        host = discovery_info.ip
+        dss_id = await self._fetch_dss_id(host, 8080)
+        if not dss_id:
+            return self.async_abort(reason="cannot_connect")
+        await self.async_set_unique_id(dss_id)
+        # Already configured → just refresh the stored IP/port and stop. The existing
+        # entry (and its Pro license) is kept; the integration reconnects on the new IP.
+        self._abort_if_unique_id_configured(updates={CONF_HOST: host, CONF_PORT: 8080})
+        # New dSS → offer to add it (host is pre-filled, only token approval remains).
+        self._data = {CONF_CONNECTION_TYPE: CONN_LOCAL, CONF_HOST: host, CONF_PORT: 8080}
+        self._api = DigitalStromApi(host=host, port=8080)
+        self.context["title_placeholders"] = {"host": host}
+        return await self.async_step_discovery_confirm()
+
+    async def async_step_discovery_confirm(self, user_input=None):
+        """Confirm adding a freshly discovered dSS, then approve the token."""
+        if user_input is not None:
+            try:
+                self._pending_token = await self._api.request_app_token()
+                return await self.async_step_approve_token()
+            except DigitalStromApiError as err:
+                _LOGGER.error("Connection failed: %s", err)
+                return self.async_abort(reason="cannot_connect")
+        return self.async_show_form(
+            step_id="discovery_confirm",
+            description_placeholders={"host": self._data[CONF_HOST]},
+        )
+
+    async def async_step_reconfigure(self, user_input=None):
+        """Change the dSS IP/port without re-pairing (keeps the entry + Pro license)."""
+        entry = self._get_reconfigure_entry()
+        errors = {}
+        if user_input is not None:
+            host = user_input[CONF_HOST]
+            port = user_input[CONF_PORT]
+            dss_id = await self._fetch_dss_id(host, port)
+            if not dss_id:
+                errors["base"] = "cannot_connect"
+            elif entry.unique_id and dss_id != entry.unique_id:
+                # A different dSS answered on this IP — refuse, or the license/entry
+                # would bind to the wrong machine.
+                errors["base"] = "wrong_device"
+            else:
+                return self.async_update_reload_and_abort(
+                    entry, data_updates={CONF_HOST: host, CONF_PORT: port}
+                )
+        return self.async_show_form(
+            step_id="reconfigure",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(
+                        CONF_HOST, default=entry.data.get(CONF_HOST, "")
+                    ): str,
+                    vol.Required(
+                        CONF_PORT, default=entry.data.get(CONF_PORT, 8080)
+                    ): int,
+                }
+            ),
+            errors=errors,
+        )
+
     async def async_step_approve_token(self, user_input=None):
         """Step 2: Wait for user to approve token in dSS admin."""
         errors = {}

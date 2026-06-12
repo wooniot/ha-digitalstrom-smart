@@ -12,16 +12,31 @@
       "approve_token": {
         "title": "Approve Application",
         "description": "Approve the WoonIoT connection in your Digital Strom Configurator:\n\n1. Open the dSS admin interface in your browser\n2. Go to System > Access Authorization\n3. Find 'WoonIoT HA Connect' and check the box to approve\n\nToken: {token}\n\nClick Submit after approving."
+      },
+      "discovery_confirm": {
+        "title": "Digital Strom server found",
+        "description": "A Digital Strom server was discovered at {host}. Do you want to add it?"
+      },
+      "reconfigure": {
+        "title": "Change dSS address",
+        "description": "Enter the new IP address of your dSS. Your Pro license and all settings are kept, as long as it is the same server.",
+        "data": {
+          "host": "IP address",
+          "port": "Port"
+        }
       }
     },
     "error": {
       "cannot_connect": "Cannot connect to dSS. Check IP address and ensure the server is reachable on your local network.",
-      "token_not_approved": "Token not yet approved. Approve the connection in dSS admin under Access Authorization."
+      "token_not_approved": "Token not yet approved. Approve the connection in dSS admin under Access Authorization.",
+      "wrong_device": "That address belongs to a different Digital Strom server. Enter the address of the same dSS to keep your license and settings."
     },
     "abort": {
       "cannot_connect": "Could not connect to dSS after authentication.",
-      "already_configured": "This Digital Strom server is already configured."
-    }
+      "already_configured": "This Digital Strom server is already configured.",
+      "reconfigure_successful": "The dSS address was updated."
+    },
+    "flow_title": "{host}"
   },
   "options": {
     "step": {
