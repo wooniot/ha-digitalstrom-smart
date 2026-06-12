@@ -493,18 +493,26 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
         try:
             if not self._circuits:
                 all_circuits = await self.api.get_circuits()
-                # Alleen NIEUWE-generatie dSM-meters (dSM20/dSM25). De oude dSM11/dSM12
-                # werken anders met de metering-API en worden bewust niet gemeten
-                # (verzoek René/Marijn 12 jun: energie/power alleen op dSM20/25).
+                # DIAGNOSE (v3.7.5): log ALLE circuits + hwName + dSUID op INFO, zodat we in
+                # het normale log zien hoe een dSM20 zich meldt (geen debug-logging nodig).
+                _LOGGER.info(
+                    "Alle circuits van de dSS (%d): %s",
+                    len(all_circuits),
+                    " | ".join(f"{c.get('name','?')} [hw={c.get('hwName','?')}] dsuid={(c.get('dSUID','') or '')[:18]}"
+                               for c in all_circuits),
+                )
+                # NIEUWE-generatie dSM-meters meten (dSM20/dSM25). Oude dSM11/dSM12 worden
+                # niet gemeten (verzoek 12 jun). Mocht een dSM20 zich anders melden dan
+                # 'dSM20', dan zien we dat in de bovenstaande regel en passen we de filter aan.
                 self._circuits = [
                     c for c in all_circuits
                     if c.get("hwName", "").startswith("dSM")
                     and not c.get("hwName", "").startswith(("dSM11", "dSM12"))
                 ]
                 _LOGGER.info(
-                    "Metering dSM-meters (nieuwe gen; dSM11/dSM12 overgeslagen): %d — %s",
+                    "Gemeten dSM-meters (na filter): %d — %s",
                     len(self._circuits),
-                    ", ".join(f"{c.get('name','')} [{c.get('hwName','')}]" for c in self._circuits),
+                    ", ".join(f"{c.get('name','')} [{c.get('hwName','')}]" for c in self._circuits) or "(geen)",
                 )
             # Fetch per-circuit power + cumulative energy
             for circuit in self._circuits:
@@ -533,8 +541,8 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
                             self._circuit_energy_wh[dsuid] = int(wh)
                 except DigitalStromApiError:
                     pass
-                # Debug: ruwe metering-respons per dSM — voor remote-diagnose (bv. dSM20).
-                _LOGGER.debug(
+                # DIAGNOSE (v3.7.5, op INFO): ruwe metering-respons per dSM — remote-debug dSM20.
+                _LOGGER.info(
                     "dSM-meter %s [%s] dsuid=%s → power_raw=%s | energy_raw=%s",
                     circuit.get("name", ""), hw, dsuid, p_raw, e_raw,
                 )
