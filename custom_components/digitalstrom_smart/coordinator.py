@@ -493,9 +493,8 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
         try:
             if not self._circuits:
                 all_circuits = await self.api.get_circuits()
-                # DIAGNOSE (v3.7.5): log ALLE circuits + hwName + dSUID op INFO, zodat we in
-                # het normale log zien hoe een dSM20 zich meldt (geen debug-logging nodig).
-                _LOGGER.info(
+                # Diagnose-hulp: alle circuits + hwName + dSUID (DEBUG).
+                _LOGGER.debug(
                     "Alle circuits van de dSS (%d): %s",
                     len(all_circuits),
                     " | ".join(f"{c.get('name','?')} [hw={c.get('hwName','?')}] dsuid={(c.get('dSUID','') or '')[:18]}"
@@ -541,8 +540,8 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
                             self._circuit_energy_wh[dsuid] = int(wh)
                 except DigitalStromApiError:
                     pass
-                # DIAGNOSE (v3.7.5, op INFO): ruwe metering-respons per dSM — remote-debug dSM20.
-                _LOGGER.info(
+                # Diagnose-hulp: ruwe metering-respons per dSM (DEBUG).
+                _LOGGER.debug(
                     "dSM-meter %s [%s] dsuid=%s → power_raw=%s | energy_raw=%s",
                     circuit.get("name", ""), hw, dsuid, p_raw, e_raw,
                 )

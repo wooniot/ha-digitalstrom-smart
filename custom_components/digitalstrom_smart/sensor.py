@@ -198,8 +198,11 @@ async def async_setup_entry(
             if stype not in DEVICE_SENSOR_MAP:
                 continue
             sensor_config = DEVICE_SENSOR_MAP[stype]
-            # Energy (Wh cumulative) is PRO — power (W) stays FREE
-            if stype == SENSOR_ACTIVE_ENERGY and not coordinator.pro_enabled:
+            # Per-device vermogen/energie (SW-zwarte klemmen) wordt NIET meer als sensor
+            # aangemaakt: live uitlezen (getSensorValue2) verstoort de dSM-metering, en via
+            # events komen er nauwelijks waarden binnen → lege/nutteloze sensoren. Het
+            # per-circuit (dSM) vermogen/energie blijft wél. (Verzoek René, 12 jun 2026.)
+            if stype in (SENSOR_ACTIVE_POWER, SENSOR_ACTIVE_ENERGY):
                 continue
             if sensor_config.get("per_device"):
                 has_value = True
