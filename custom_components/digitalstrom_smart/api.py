@@ -302,6 +302,28 @@ class DigitalStromApi:
         """Get dSS server time."""
         return await self._request("/json/system/time")
 
+    async def set_apartment_state(self, name: str, active: bool) -> None:
+        """Set a dSS apartment system state (fire/rain/frost/hail/wind)."""
+        await self._request(
+            "/json/state/set",
+            {"name": name, "value": "active" if active else "inactive"},
+        )
+
+    async def get_apartment_state(self, name: str) -> bool | None:
+        """Read a dSS apartment system state. Returns True=active, False=inactive, None=unknown.
+
+        dSS encodes the state value as 1=active, 2=inactive at /usr/states/<name>/value."""
+        try:
+            res = await self._request(
+                "/json/property/getInteger",
+                {"path": f"/usr/states/{name}/value"},
+            )
+        except DigitalStromApiError:
+            return None
+        if isinstance(res, dict) and res.get("value") is not None:
+            return res["value"] == 1  # dSS: 1=active, 2=inactive
+        return None
+
     # =====================================================================
     # Apartment / Structure queries
     # =====================================================================

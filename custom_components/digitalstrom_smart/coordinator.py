@@ -38,6 +38,7 @@ from .const import (
     NAMED_SCENES_SHADE,
     GROUP_HEATING_SCENES,
     AREA_SCENE_NAMES,
+    APARTMENT_SYSTEM_STATES,
     SENSOR_TEMPERATURE,
     SENSOR_HUMIDITY,
     SENSOR_BRIGHTNESS,
@@ -148,6 +149,7 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
         # Apartment-wide state (PRO)
         self._apartment_presence: int | None = None  # current presence scene nr
         self._apartment_alarms: set[int] = set()     # active alarm scene nrs
+        self._apartment_states: dict[str, bool] = {} # dSS system states: name -> active
         self._heating_system_cooling: bool = False    # True when system is in cooling mode
         self._heating_mode_initialized: bool = False  # fetched at least once from API
 
@@ -304,6 +306,18 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
 
         # Poll binary input states for all Joker sensor devices
         await self.poll_binary_input_states()
+
+        # Fetch current apartment system states (fire/rain/frost/hail/wind)
+        for name in APARTMENT_SYSTEM_STATES:
+            try:
+                val = await self.api.get_apartment_state(name)
+                if val is not None:
+                    self._apartment_states[name] = val
+            except Exception as err:
+                _LOGGER.debug("Initial system-state fetch failed for %s: %s", name, err)
+
+        # Poll presence (Present/Absent/...) at startup — events don't fire on (re)start.
+        await self.fetch_apartment_state()
 
     async def poll_binary_input_states(self) -> None:
         """Poll all device runtime info via the apartment/getDevices web API.
@@ -1006,6 +1020,16 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
     def is_alarm_active(self, scene: int) -> bool:
         return scene in self._apartment_alarms
 
+    def is_apartment_state_active(self, name: str) -> bool:
+        """Whether a dSS apartment system state (fire/rain/frost/hail/wind) is active."""
+        return self._apartment_states.get(name, False)
+
+    async def set_apartment_state(self, name: str, active: bool) -> None:
+        """Set a dSS apartment system state, then update locally (optimistic)."""
+        await self.api.set_apartment_state(name, active)
+        self._apartment_states[name] = active
+        self.async_update_listeners()
+
     async def fetch_apartment_state(self) -> None:
         """Poll apartment presence state from dSS (free + pro, every cycle).
 
@@ -1288,15 +1312,13 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
 
             # Apartment-level state changes (rain, etc.) — no dsuid
             # dSS format: StateApartment;rain;1;active / StateApartment;rain;2;inactive
-            if state_name == "rain":
+            if state_name in APARTMENT_SYSTEM_STATES:
+                # dSS apartment system states: fire/rain/frost/hail/wind (1=active)
                 is_active = str(state_value).lower() in ("active", "true", "1")
-                if is_active:
-                    self._apartment_alarms.add(SCENE_RAIN)
-                else:
-                    self._apartment_alarms.discard(SCENE_RAIN)
+                self._apartment_states[state_name] = is_active
                 _LOGGER.debug(
-                    "Apartment state change: %s=%s (alarms=%s)",
-                    state_name, state_value, self._apartment_alarms,
+                    "Apartment system state: %s=%s (states=%s)",
+                    state_name, state_value, self._apartment_states,
                 )
                 self.async_update_listeners()
             elif state_name == "heating_system_mode":

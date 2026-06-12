@@ -88,6 +88,11 @@
       "zone_climate": { "name": "Klimaat" }
     },
     "switch": {
+      "fire": { "name": "Brand" },
+      "rain_protection": { "name": "Regen" },
+      "frost": { "name": "Vorst" },
+      "hail": { "name": "Hagel" },
+      "wind": { "name": "Wind" },
       "alarm_1": { "name": "Alarm 1" },
       "alarm_2": { "name": "Alarm 2" },
       "alarm_3": { "name": "Alarm 3" },
@@ -109,6 +114,9 @@
       }
     },
     "binary_sensor": {
+      "frost": { "name": "Vorst" },
+      "hail": { "name": "Hagel" },
+      "wind": { "name": "Wind" },
       "rain": { "name": "Regen" },
       "rain_protection": { "name": "Regenbescherming" },
       "fire": { "name": "Brand" },

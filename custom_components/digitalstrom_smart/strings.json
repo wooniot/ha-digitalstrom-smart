@@ -87,6 +87,11 @@
       "zone_climate": { "name": "Climate" }
     },
     "switch": {
+      "fire": { "name": "Fire" },
+      "rain_protection": { "name": "Rain" },
+      "frost": { "name": "Frost" },
+      "hail": { "name": "Hail" },
+      "wind": { "name": "Wind" },
       "alarm_1": { "name": "Alarm 1" },
       "alarm_2": { "name": "Alarm 2" },
       "alarm_3": { "name": "Alarm 3" },
@@ -108,6 +113,9 @@
       }
     },
     "binary_sensor": {
+      "frost": { "name": "Frost" },
+      "hail": { "name": "Hail" },
+      "wind": { "name": "Wind" },
       "rain": { "name": "Rain" },
       "rain_protection": { "name": "Rain Protection" },
       "fire": { "name": "Fire" },

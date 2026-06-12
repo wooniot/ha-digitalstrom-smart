@@ -16,7 +16,7 @@ from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DOMAIN, MANUFACTURER, GROUP_JOKER, CONF_ENABLED_ZONES, APARTMENT_WEATHER_SCENES, WEATHER_TRANSLATION_KEYS, SCENE_RAIN, APARTMENT_ALARM_SCENES, ALARM_BINARY_SENSOR_KEYS, SCENE_FIRE, SCENE_DOOR_BELL
+from .const import DOMAIN, MANUFACTURER, GROUP_JOKER, CONF_ENABLED_ZONES, APARTMENT_WEATHER_SCENES, WEATHER_TRANSLATION_KEYS, SCENE_RAIN, APARTMENT_ALARM_SCENES, ALARM_BINARY_SENSOR_KEYS, SCENE_FIRE, SCENE_DOOR_BELL, APARTMENT_SYSTEM_STATES
 from .coordinator import DigitalStromCoordinator
 
 _LOGGER = logging.getLogger(__name__)
@@ -107,16 +107,15 @@ async def async_setup_entry(
     if coordinator.pro_enabled and coordinator.outdoor_sensors and "rain" in coordinator.outdoor_sensors:
         entities.append(DigitalStromRainSensor(coordinator))
 
-    # --- FREE: Apartment alarm binary sensors (Fire/Brand, Alarm 1-4, Panic, Doorbell) ---
+    # --- FREE: Apartment alarm binary sensors (Alarm 1/2/4, Panic, Doorbell) ---
     for scene_nr, name in APARTMENT_ALARM_SCENES.items():
         entities.append(DigitalStromAlarmBinarySensor(coordinator, scene_nr, name))
 
-    # --- PRO: Weather protection binary sensors (Wind, Rain scenes) ---
-    if coordinator.pro_enabled:
-        for scene_nr, name in APARTMENT_WEATHER_SCENES.items():
-            entities.append(
-                DigitalStromWeatherProtectionSensor(coordinator, scene_nr, name)
-            )
+    # --- FREE: Apartment system states (Fire, Rain, Frost, Hail, Wind) — read-only ---
+    # Unified state-based model (driven by /usr/states + stateChange events). Replaces
+    # the old per-scene weather-protection sensor and the fire alarm-scene sensor.
+    for state_key in APARTMENT_SYSTEM_STATES:
+        entities.append(DigitalStromSystemStateBinarySensor(coordinator, state_key))
 
     # --- PRO: User Defined States that behave as binary (active/inactive) ---
     if coordinator.pro_enabled:
@@ -264,6 +263,40 @@ class DigitalStromAlarmBinarySensor(CoordinatorEntity, BinarySensorEntity):
     @property
     def is_on(self) -> bool:
         return self.coordinator.is_alarm_active(self._scene_nr)
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        self.async_write_ha_state()
+
+
+class DigitalStromSystemStateBinarySensor(CoordinatorEntity, BinarySensorEntity):
+    """A dSS apartment system state (Fire, Rain, Frost, Hail, Wind) as a read-only sensor.
+
+    Driven by the dSS state system (/usr/states + stateChange events). The matching
+    switch (switch.py) lets you set the same state. Free."""
+
+    _attr_has_entity_name = True
+
+    def __init__(self, coordinator: DigitalStromCoordinator, state_key: str) -> None:
+        super().__init__(coordinator)
+        self._state_key = state_key
+        cfg = APARTMENT_SYSTEM_STATES[state_key]
+        dss_id = coordinator.dss_id
+        self._attr_unique_id = f"ds_{dss_id}_{cfg['bin_uid']}"
+        self._attr_translation_key = cfg["tkey"]
+        self._attr_icon = cfg["icon"]
+        if cfg.get("device_class"):
+            self._attr_device_class = BinarySensorDeviceClass(cfg["device_class"])
+        self._attr_device_info = {
+            "identifiers": {(DOMAIN, f"{dss_id}_apartment")},
+            "name": "Digital Strom Server",
+            "manufacturer": MANUFACTURER,
+            "model": "dSS",
+        }
+
+    @property
+    def is_on(self) -> bool:
+        return self.coordinator.is_apartment_state_active(self._state_key)
 
     @callback
     def _handle_coordinator_update(self) -> None:

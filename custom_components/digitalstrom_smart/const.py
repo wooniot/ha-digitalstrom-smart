@@ -107,11 +107,12 @@ APARTMENT_PRESENCE_KEYS = {
 # All presence scene numbers (for detection in events)
 PRESENCE_SCENE_NUMBERS = set(APARTMENT_PRESENCE_SCENES.keys())
 
-# Alarm scene mapping: scene_nr -> display name
+# Alarm scene mapping: scene_nr -> display name.
+# Note: Fire/Brand is NOT here — it is the dSS "fire" system state (see
+# APARTMENT_SYSTEM_STATES), exposed uniformly with rain/frost/hail/wind.
 APARTMENT_ALARM_SCENES = {
     SCENE_ALARM_1: "Alarm 1",
     SCENE_ALARM_2: "Alarm 2",
-    SCENE_ALARM_3: "Alarm 3",
     SCENE_ALARM_4: "Alarm 4",
     SCENE_PANIC: "Panic",
     SCENE_DOOR_BELL: "Doorbell",
@@ -121,7 +122,6 @@ APARTMENT_ALARM_SCENES = {
 ALARM_TRANSLATION_KEYS = {
     SCENE_ALARM_1: "alarm_1",
     SCENE_ALARM_2: "alarm_2",
-    SCENE_ALARM_3: "alarm_3",
     SCENE_ALARM_4: "alarm_4",
     SCENE_PANIC: "panic",
     SCENE_DOOR_BELL: "doorbell",
@@ -131,10 +131,22 @@ ALARM_TRANSLATION_KEYS = {
 ALARM_BINARY_SENSOR_KEYS = {
     SCENE_ALARM_1: "alarm_1_active",
     SCENE_ALARM_2: "alarm_2_active",
-    SCENE_ALARM_3: "fire",
     SCENE_ALARM_4: "alarm_4_active",
     SCENE_PANIC: "panic_active",
     SCENE_DOOR_BELL: "doorbell_active",
+}
+
+# dSS apartment system states (/usr/states; value 1=active, 2=inactive). Each is exposed
+# uniformly as a read-only binary_sensor AND a settable switch (set via /json/state/set).
+# Keys are the exact dSS state names. bin_uid/sw_uid keep the legacy unique_id for fire
+# (and the rain binary) so existing entities survive the move to this unified model.
+#   device_class strings map to BinarySensorDeviceClass in binary_sensor.py.
+APARTMENT_SYSTEM_STATES = {
+    "fire":  {"name": "Fire",  "tkey": "fire",            "device_class": "smoke",    "icon": "mdi:fire",            "bin_uid": "alarm_76",    "sw_uid": "apartment_alarm_76"},
+    "rain":  {"name": "Rain",  "tkey": "rain_protection", "device_class": "moisture", "icon": "mdi:weather-pouring", "bin_uid": "weather_85",  "sw_uid": "state_rain"},
+    "frost": {"name": "Frost", "tkey": "frost",           "device_class": "cold",     "icon": "mdi:snowflake",      "bin_uid": "state_frost", "sw_uid": "state_frost"},
+    "hail":  {"name": "Hail",  "tkey": "hail",            "device_class": None,       "icon": "mdi:weather-hail",   "bin_uid": "state_hail",  "sw_uid": "state_hail"},
+    "wind":  {"name": "Wind",  "tkey": "wind",            "device_class": None,       "icon": "mdi:weather-windy",  "bin_uid": "state_wind",  "sw_uid": "state_wind"},
 }
 
 # Weather protection: scene_nr -> translation key
