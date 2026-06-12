@@ -37,8 +37,9 @@ Im Gegensatz zu herkömmlichen Integrationen, die jedes Gerät einzeln abfragen,
 - **Szenenaktivierung** mit importierten dS-Szenennamen (die empfohlene Methode zur Steuerung von Digital Strom)
 - **Temperatursensoren** pro Zone (auch Räume ohne Heizung, aus allen verfügbaren Quellen: Zonensensoren, Gerätesensoren)
 - **Gerätesensoren** — Ulux und ähnliche Geräte stellen CO2, Helligkeit, Temperatur und Feuchtigkeit als einzelne Sensor-Entitäten bereit
-- **Energieüberwachung** (Gesamtverbrauch auf Wohnungsebene)
-- **Energieüberwachung pro Stromkreis** — Verbrauch pro dSM-Zähler, jeder Zähler als eigenes Gerät
+- **Geräte-Leistungsmessung (W)** — SW-KL200, SW-ZWS200, SW-SSL200 und SW-UMR200 liefern die aktuelle Leistung (W) _(kumulierte Energie in Wh ist Pro)_
+- **Leistungsüberwachung auf Wohnungsebene** — Gesamtverbrauch (W)
+- **Alarm-Binärsensoren** — Feuer/Brand, Alarm 1/2/4, Panik und Türklingel als Binärsensoren unter dem Digital-Strom-Server-Gerät, mit Live-Updates aus dSS-Alarmereignissen
 - **Eventgesteuert** — sofortige Status-Updates bei Betätigung eines Wandschalters
 - **Szenen für alle Gruppen** — Licht-, Beschattungs- und Heizungsszenen
 
@@ -47,9 +48,19 @@ Im Gegensatz zu herkömmlichen Integrationen, die jedes Gerät einzeln abfragen,
 Erweiterte Funktionen mit einem Pro-Lizenzschlüssel von [wooniot.nl/pro](https://wooniot.nl/pro):
 
 - **Klimasteuerung** — Zieltemperatur, Voreinstellungen (Komfort, Sparen, Nacht, Urlaub), Heiz- und Kühlerkennung
-- **Außenwettersensoren** — Temperatur, Feuchtigkeit, Helligkeit, Wind, Luftdruck, Regenerkennung
+- **Anwesenheitsmodus** — Anwesenheitsstatus der Wohnung lesen und setzen (Anwesend, Abwesend, Schlafen, …) als Select-Entität
+- **Benutzerdefinierte Aktionen** — im dSS Konfigurator angelegte Aktionen erscheinen als Home-Assistant-**Buttons**
+- **Benutzerdefinierte Zustände** — eigene und wohnungsweite dSS-Zustände erscheinen als **Sensoren / Binärsensoren** mit Live-Updates aus `stateChange`-Ereignissen
+- **Energie pro Stromkreis (dSM)** — Leistung **und** kumulierte kWh pro dSM-Zähler, jeder als eigenes Gerät, bereit für das **HA Energie-Dashboard**
+- **Wohnungs-kWh-Sensor** — aggregierte kumulierte Energie über alle dSMs (Energie-Dashboard)
+- **Geräte-Energie (Wh)** — kumulierte Energie auf Messgeräten (Geräte-Leistung in W bleibt kostenlos)
+- **Außenwettersensoren** — Temperatur, Feuchtigkeit, Helligkeit, Windgeschwindigkeit, Windböen, Luftdruck
+- **Regenerkennung** — Echtzeit-Regensensor über dSS-System-Protection-Ereignisse
+- **Wetterschutz-Sensoren** — Wind-/Regenschutz-Szenenzustände als Binärsensoren
+- **Alarm-Steuerschalter** — Alarm 1–4 und Panik aus HA setzen/löschen (die Alarm-Binärsensoren bleiben kostenlos)
 - **Geräteidentifikation** — Gerät blinken lassen zur Identifikation
 - **Szenen speichern** — aktuelle Ausgabewerte als neue Szene speichern
+- **Bereichsszenen** — voller Szenenbereich (6-9, 10-14, 20-24, 30-34, 40-44) plus alle benutzerdefinierten Szenen aus dem dSS
 
 #### Pro-Lizenz
 
@@ -116,16 +127,25 @@ Gerätesensoren (Ulux usw.):
 - `sensor.<zone>_<gerät>_co2` — Geräte-CO2-Wert
 - `sensor.<zone>_<gerät>_brightness` — Gerätehelligkeit
 
-Wohnungsebene:
+Wohnungsebene (Kostenlos):
 - `sensor.dss_power_consumption` — Gesamtleistung (Watt)
 
-Pro Stromkreis (dSM-Zähler):
+Pro Stromkreis (dSM-Zähler) — **Pro**:
 - `sensor.<circuit_name>_power` — Leistung pro dSM-Zähler (jeder Zähler als eigenes Gerät)
+- `sensor.<circuit_name>_energy` — Kumulierte Energie pro dSM (kWh, `total_increasing`)
+- `sensor.dss_energy_consumption` — Wohnungsweite kWh, Summe aller dSMs (Energie-Dashboard)
 
-Pro-Entitäten (Lizenz erforderlich):
+Benutzerdefinierte Aktionen & Zustände (Wohnung) — **Pro**:
+- `button.<aktionsname>` — Ein Button pro im dSS Konfigurator definierter Aktion
+- `sensor.<zustandsname>` / `binary_sensor.<zustandsname>` — Eine Entität pro eigenem/wohnungsweitem Zustand
+
+Weitere Pro-Entitäten (Lizenz erforderlich):
 - `climate.<zone>_climate` — Zonen-Klimasteuerung mit Zieltemperatur
+- `select.<...>_presence` — Anwesenheitsmodus der Wohnung (Anwesend / Abwesend / Schlafen / …)
+- `sensor.<zone>_<gerät>_energy` — Geräte-Energie (Wh) — Geräte-Leistung (W) bleibt kostenlos
 - `sensor.dss_outdoor_*` — Außenwettersensoren
 - `binary_sensor.dss_rain` — Regenerkennung
+- `switch.dss_alarm_*` — Alarm-1–4-/Panik-Steuerschalter (die Alarm-Binärsensoren bleiben kostenlos)
 
 ## Dienste
 
