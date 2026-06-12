@@ -493,43 +493,51 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
         try:
             if not self._circuits:
                 all_circuits = await self.api.get_circuits()
-                # Only keep real dSM meters (not virtual controllers)
+                # Alleen NIEUWE-generatie dSM-meters (dSM20/dSM25). De oude dSM11/dSM12
+                # werken anders met de metering-API en worden bewust niet gemeten
+                # (verzoek René/Marijn 12 jun: energie/power alleen op dSM20/25).
                 self._circuits = [
                     c for c in all_circuits
                     if c.get("hwName", "").startswith("dSM")
+                    and not c.get("hwName", "").startswith(("dSM11", "dSM12"))
                 ]
                 _LOGGER.info(
-                    "Found %d dSM meters: %s",
+                    "Metering dSM-meters (nieuwe gen; dSM11/dSM12 overgeslagen): %d — %s",
                     len(self._circuits),
-                    ", ".join(c.get("name", "") for c in self._circuits),
+                    ", ".join(f"{c.get('name','')} [{c.get('hwName','')}]" for c in self._circuits),
                 )
             # Fetch per-circuit power + cumulative energy
             for circuit in self._circuits:
                 dsuid = circuit.get("dSUID", "")
+                hw = circuit.get("hwName", "")
                 if not dsuid:
                     continue
+                p_raw = e_raw = None
                 try:
-                    values = await self.api.get_metering_latest(
+                    p_raw = await self.api.get_metering_latest(
                         meter_dsuid=f".meters({dsuid})"
                     )
-                    for v in values:
+                    for v in p_raw:
                         self._circuit_power[dsuid] = int(v.get("value", 0))
                 except DigitalStromApiError:
                     pass
                 try:
-                    # Use the NORMALISED metering API (Wh) — getEnergyMeterValue returns a
-                    # raw value whose unit differs per dSM model (Ws on dSM12, other on
-                    # dSM20) which gave nonsensical kWh on some meters. metering type=energy
-                    # is consistent across models.
-                    e_vals = await self.api.get_metering_latest(
+                    # Genormaliseerde metering-API (Wh) — getEnergyMeterValue gaf een raw
+                    # waarde met model-afhankelijke eenheid. metering type=energy = consistent.
+                    e_raw = await self.api.get_metering_latest(
                         meter_dsuid=f".meters({dsuid})", meter_type="energy"
                     )
-                    for ev in e_vals:
+                    for ev in e_raw:
                         wh = ev.get("value")
                         if wh and wh > 0:
                             self._circuit_energy_wh[dsuid] = int(wh)
                 except DigitalStromApiError:
                     pass
+                # Debug: ruwe metering-respons per dSM — voor remote-diagnose (bv. dSM20).
+                _LOGGER.debug(
+                    "dSM-meter %s [%s] dsuid=%s → power_raw=%s | energy_raw=%s",
+                    circuit.get("name", ""), hw, dsuid, p_raw, e_raw,
+                )
         except DigitalStromApiError as err:
             _LOGGER.debug("Circuit data fetch failed: %s", err)
 
@@ -700,51 +708,16 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
         _LOGGER.debug("Per-device power poll skipped (disabled in v3.3.22)")
 
     async def _power_poll_loop(self) -> None:
-        """Background per-device power via getSensorValue2 — GENTLE & ROTATING.
+        """Per-device power polling is DISABLED — events only (deviceSensorValue).
 
-        getSensorValue2 is an expensive s485-bus read (~1.4s each) and the bus is SERIAL,
-        so reading all metering devices at once overloads it (metering overflow, slow dSS).
-        Each 30s cycle reads a small BATCH sequentially, rotating through all metering
-        devices; a full round takes a few minutes. dSM/circuit power stays at 30s. NEVER
-        blocks setup (runs as a background task)."""
-        metering = [
-            dsuid for dsuid, dev in self.devices.items()
-            if any(s.get("type") in (SENSOR_ACTIVE_POWER, SENSOR_ACTIVE_ENERGY)
-                   for s in dev.get("sensors", []))
-        ]
-        if not metering:
-            _LOGGER.info("Power poll: no metering devices found")
-            return
-        BATCH = 4  # devices per 30s cycle — keeps the s485 bus lightly loaded
-        _LOGGER.info(
-            "Power poll loop STARTED: %d metering devices, batch=%d per %ds (rotating)",
-            len(metering), BATCH, POLL_INTERVAL_ENERGY,
-        )
-        idx = 0
-        cycle = 0
-        while True:
-            try:
-                await asyncio.sleep(POLL_INTERVAL_ENERGY)  # 30s
-                batch = [metering[(idx + i) % len(metering)] for i in range(min(BATCH, len(metering)))]
-                idx = (idx + BATCH) % len(metering)
-                do_energy = (cycle % 10 == 0)  # energy ~every 5 minutes
-                types = (SENSOR_ACTIVE_POWER, SENSOR_ACTIVE_ENERGY) if do_energy else (SENSOR_ACTIVE_POWER,)
-                for dsuid in batch:  # sequential — the s485 bus serialises anyway
-                    for stype in types:
-                        try:
-                            r = await self.api.get_device_sensor_by_type(dsuid, stype)
-                            v = r.get("value") if isinstance(r, dict) else None
-                            if v is not None:
-                                self._device_sensor_values.setdefault(dsuid, {})[stype] = round(float(v), 2)
-                        except Exception:
-                            pass  # device may not support this sensor type → skip
-                self.async_update_listeners()
-                cycle += 1
-            except asyncio.CancelledError:
-                _LOGGER.info("Power poll loop STOPPED")
-                return
-            except Exception as err:
-                _LOGGER.debug("Power poll cycle error: %s", err)
+        getSensorValue2 is an expensive SERIAL s485-bus read (~1.4s each). Polling it
+        STARVES the dSS metering controller (dSS-log: "Metering pollLoop exceeded 1s
+        budget" + "deltaEnergy: too long delay → setting new baseline"), wat de dSM-energie
+        op nieuwere meters (dSM20/25) corrupt maakt. Per-device vermogen komt daarom nu
+        UITSLUITEND uit de dSS-eigen deviceSensorValue-events; de dSM-meters leveren het
+        per-circuit vermogen/energie. Zo vechten de twee niet om de bus."""
+        _LOGGER.info("Per-device power: events-only (geen getSensorValue2-polling, bus vrij voor metering)")
+        return
 
     async def fetch_device_power_sensors(self) -> None:
         """Fast startup seed from structure data only — NO live getSensorValue2 calls.
