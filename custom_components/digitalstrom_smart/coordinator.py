@@ -119,7 +119,7 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
 
         # Metering data
         self._circuit_power: dict[str, int] = {}  # dsuid -> watts
-        self._circuit_energy_ws: dict[str, int] = {}  # dsuid -> cumulative Watt-seconds
+        self._circuit_energy_wh: dict[str, int] = {}  # dsuid -> cumulative Wh (normalised)
         self._circuits: list[dict] = []
 
         # User Defined Actions & States (apartment automation primitives)
@@ -517,9 +517,17 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
                 except DigitalStromApiError:
                     pass
                 try:
-                    ws = await self.api.get_circuit_energy(dsuid)
-                    if ws and ws > 0:
-                        self._circuit_energy_ws[dsuid] = int(ws)
+                    # Use the NORMALISED metering API (Wh) — getEnergyMeterValue returns a
+                    # raw value whose unit differs per dSM model (Ws on dSM12, other on
+                    # dSM20) which gave nonsensical kWh on some meters. metering type=energy
+                    # is consistent across models.
+                    e_vals = await self.api.get_metering_latest(
+                        meter_dsuid=f".meters({dsuid})", meter_type="energy"
+                    )
+                    for ev in e_vals:
+                        wh = ev.get("value")
+                        if wh and wh > 0:
+                            self._circuit_energy_wh[dsuid] = int(wh)
                 except DigitalStromApiError:
                     pass
         except DigitalStromApiError as err:
@@ -894,10 +902,10 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
 
     def get_circuit_energy_kwh(self, dsuid: str) -> float | None:
         """Cumulative energy for a single dSM in kWh (TOTAL_INCREASING)."""
-        ws = self._circuit_energy_ws.get(dsuid)
-        if ws is None or ws <= 0:
+        wh = self._circuit_energy_wh.get(dsuid)
+        if wh is None or wh <= 0:
             return None
-        return round(ws / 3_600_000, 3)
+        return round(wh / 1000, 3)  # Wh → kWh
 
     @property
     def apartment_energy_kwh(self) -> float | None:
@@ -905,12 +913,12 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
 
         Returns None until at least one meter has reported a value.
         """
-        if not self._circuit_energy_ws:
+        if not self._circuit_energy_wh:
             return None
-        total = sum(v for v in self._circuit_energy_ws.values() if v > 0)
+        total = sum(v for v in self._circuit_energy_wh.values() if v > 0)
         if total <= 0:
             return None
-        return round(total / 3_600_000, 3)
+        return round(total / 1000, 3)  # Wh → kWh
 
     @property
     def user_actions(self) -> list[dict]:
