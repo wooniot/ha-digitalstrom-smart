@@ -108,6 +108,7 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
 
         # Device sensor values: {dsuid: {sensor_type: value}}
         self._device_sensor_values: dict[str, dict[int, float]] = {}
+        self._last_power_poll: float = 0.0  # throttle SW-series power refresh to 30s
 
         # Per-device on/off state tracking (for individual Joker switches)
         self._device_on_states: dict[str, bool] = {}  # dsuid -> is_on
@@ -332,12 +333,31 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
             _LOGGER.debug("Device poll failed: %s", err)
             return
 
+        # SW-series power (W) + energy (Wh) are refreshed from this SAME getDevices
+        # payload — no extra dSS calls (the per-device getSensorValue2 flood that
+        # overloaded the dSS in v3.3.18-21 is gone). Throttled to once per 30s; the
+        # binary poll itself runs every 5s, so we skip the power refresh in between.
+        now = self.hass.loop.time()
+        do_power = (now - self._last_power_poll) >= POLL_INTERVAL_ENERGY
+        if do_power:
+            self._last_power_poll = now
+
         # Parse binary inputs (1=active, 2=inactive)
         all_states: dict[str, int] = {}
         for dev in devices:
             dsuid = dev.get("dSUID", "")
             if not dsuid:
                 continue
+            if do_power:
+                for s in dev.get("sensors", []):
+                    st = s.get("type")
+                    if st in (SENSOR_ACTIVE_POWER, SENSOR_ACTIVE_ENERGY):
+                        v = s.get("value")
+                        if v is not None:
+                            try:
+                                self._device_sensor_values.setdefault(dsuid, {})[st] = round(float(v), 2)
+                            except (TypeError, ValueError):
+                                pass
             bi = dev.get("binaryInputs", [])
             if bi and "state" in bi[0]:
                 all_states[dsuid] = bi[0]["state"]
