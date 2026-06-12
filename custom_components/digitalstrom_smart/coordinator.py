@@ -39,6 +39,8 @@ from .const import (
     GROUP_HEATING_SCENES,
     AREA_SCENE_NAMES,
     APARTMENT_SYSTEM_STATES,
+    APARTMENT_ENV_STATES,
+    MOTION_STATE_RE,
     SENSOR_TEMPERATURE,
     SENSOR_HUMIDITY,
     SENSOR_BRIGHTNESS,
@@ -151,6 +153,10 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
         self._apartment_presence: int | None = None  # current presence scene nr
         self._apartment_alarms: set[int] = set()     # active alarm scene nrs
         self._apartment_states: dict[str, bool] = {} # dSS system states: name -> active
+        self._motion_zones: list[int] = []           # zones with a zone.X.motion state (PRO)
+        self._malfunction_names: list[str] = []       # zone.X.group.N.status.malfunction (PRO)
+        self._service_names: list[str] = []           # zone.X.group.N.status.service (PRO)
+        self._outdoor: dict[str, float] = {}          # weather-service: temperature/sun (PRO)
         self._heating_system_cooling: bool = False    # True when system is in cooling mode
         self._heating_mode_initialized: bool = False  # fetched at least once from API
 
@@ -308,14 +314,10 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
         # Poll binary input states for all Joker sensor devices
         await self.poll_binary_input_states()
 
-        # Fetch current apartment system states (fire/rain/frost/hail/wind)
-        for name in APARTMENT_SYSTEM_STATES:
-            try:
-                val = await self.api.get_apartment_state(name)
-                if val is not None:
-                    self._apartment_states[name] = val
-            except Exception as err:
-                _LOGGER.debug("Initial system-state fetch failed for %s: %s", name, err)
+        # Fetch all dSS /usr/states in one call: fire/rain/alarm + day-night/holiday +
+        # motion per zone + malfunction/service. Plus weather-service outdoor + sun.
+        await self.fetch_dss_states()
+        await self.fetch_outdoor_weather()
 
         # Poll presence (Present/Absent/...) at startup — events don't fire on (re)start.
         await self.fetch_apartment_state()
@@ -1050,6 +1052,93 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
         self._apartment_states[name] = active
         self.async_update_listeners()
 
+    @staticmethod
+    def _norm_state(value) -> bool:
+        """Normalise a /usr/states value to active=True. Handles dSS int (1=active,
+        2=inactive), bool (day/night, daylight) and str (active/on/day vs inactive/off)."""
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, (int, float)):
+            return int(value) == 1
+        if isinstance(value, str):
+            return value.strip().lower() in ("active", "on", "true", "1", "day")
+        return False
+
+    def _is_tracked_state(self, name: str) -> bool:
+        return (
+            name in APARTMENT_SYSTEM_STATES
+            or name in APARTMENT_ENV_STATES
+            or bool(MOTION_STATE_RE.match(name))
+            or name.endswith((".status.malfunction", ".status.service"))
+        )
+
+    async def fetch_dss_states(self) -> None:
+        """One property query for all /usr/states; populate the tracked ones and
+        discover the dynamic sets (motion zones, malfunction/service)."""
+        states = await self.api.get_all_states()
+        motion, malf, serv = [], [], []
+        for s in states:
+            name = s.get("name", "")
+            if not name:
+                continue
+            m = MOTION_STATE_RE.match(name)
+            if m:
+                motion.append(int(m.group(1)))
+            elif name.endswith(".status.malfunction"):
+                malf.append(name)
+            elif name.endswith(".status.service"):
+                serv.append(name)
+            elif name not in APARTMENT_SYSTEM_STATES and name not in APARTMENT_ENV_STATES:
+                continue
+            self._apartment_states[name] = self._norm_state(s.get("value"))
+        self._motion_zones = sorted(set(motion))
+        self._malfunction_names = malf
+        self._service_names = serv
+
+    async def fetch_outdoor_weather(self) -> None:
+        """Weather-service outdoor temperature + sun position (PRO). One call."""
+        try:
+            res = await self.api.get_sensor_values()
+            outdoor = res.get("outdoor", {}) if isinstance(res, dict) else {}
+            for k in ("temperature", "sunazimuth", "sunelevation"):
+                node = outdoor.get(k)
+                if isinstance(node, dict) and node.get("value") is not None:
+                    self._outdoor[k] = node["value"]
+        except Exception as err:
+            _LOGGER.debug("Outdoor weather fetch failed: %s", err)
+
+    @property
+    def motion_zones(self) -> list[int]:
+        return self._motion_zones
+
+    def motion_active(self, zone_id: int) -> bool:
+        return self._apartment_states.get(f"zone.{zone_id}.motion", False)
+
+    def malfunction_active(self) -> bool:
+        return any(self._apartment_states.get(n) for n in self._malfunction_names)
+
+    def service_active(self) -> bool:
+        return any(self._apartment_states.get(n) for n in self._service_names)
+
+    def _affected_zones(self, names: list[str]) -> list[str]:
+        out = []
+        for n in names:
+            if self._apartment_states.get(n):
+                z = n.split(".")
+                out.append(f"zone {z[1]} group {z[3]}" if len(z) > 3 else n)
+        return out
+
+    @property
+    def malfunction_zones(self) -> list[str]:
+        return self._affected_zones(self._malfunction_names)
+
+    @property
+    def service_zones(self) -> list[str]:
+        return self._affected_zones(self._service_names)
+
+    def outdoor_value(self, key: str) -> float | None:
+        return self._outdoor.get(key)
+
     async def fetch_apartment_state(self) -> None:
         """Poll apartment presence state from dSS (free + pro, every cycle).
 
@@ -1332,13 +1421,11 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
 
             # Apartment-level state changes (rain, etc.) — no dsuid
             # dSS format: StateApartment;rain;1;active / StateApartment;rain;2;inactive
-            if state_name in APARTMENT_SYSTEM_STATES:
-                # dSS apartment system states: fire/rain/frost/hail/wind (1=active)
-                is_active = str(state_value).lower() in ("active", "true", "1")
-                self._apartment_states[state_name] = is_active
+            if self._is_tracked_state(state_name):
+                # fire/rain/alarm + day-night/holiday + motion + malfunction/service
+                self._apartment_states[state_name] = self._norm_state(state_value)
                 _LOGGER.debug(
-                    "Apartment system state: %s=%s (states=%s)",
-                    state_name, state_value, self._apartment_states,
+                    "dSS state change: %s=%s", state_name, state_value,
                 )
                 self.async_update_listeners()
             elif state_name == "heating_system_mode":
@@ -1445,10 +1532,14 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
             # Events don't fire reliably on restart or external scene changes.
             await self.fetch_apartment_state()
 
+            # dSS /usr/states backup-poll (events keep these live in between).
+            await self.fetch_dss_states()
+
             # Pro features: extra data
             if self.pro_enabled:
                 await self.fetch_sensor_data()
                 await self.fetch_climate_data()
+                await self.fetch_outdoor_weather()  # weather-service temp + sun position
 
         except DigitalStromAuthError:
             _LOGGER.warning("Auth error during poll, reconnecting...")

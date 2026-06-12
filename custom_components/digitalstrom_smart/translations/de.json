@@ -57,6 +57,9 @@
   },
   "entity": {
     "sensor": {
+      "ws_outdoor_temperature": { "name": "Außentemperatur" },
+      "sun_azimuth": { "name": "Sonnen-Azimut" },
+      "sun_elevation": { "name": "Sonnenhöhe" },
       "power_consumption": { "name": "Stromverbrauch" },
       "temperature": { "name": "Temperatur" },
       "current_temperature": { "name": "Temperatur" },
@@ -114,6 +117,12 @@
       }
     },
     "binary_sensor": {
+      "daynight": { "name": "Tag/Nacht" },
+      "twilight": { "name": "Dämmerung" },
+      "daylight": { "name": "Tageslicht" },
+      "holiday": { "name": "Urlaub" },
+      "malfunction": { "name": "Störung" },
+      "service": { "name": "Service erforderlich" },
       "alarm_3_active": { "name": "Alarm 3" },
       "frost": { "name": "Frost" },
       "hail": { "name": "Hagel" },

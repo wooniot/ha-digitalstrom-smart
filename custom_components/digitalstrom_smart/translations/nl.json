@@ -57,6 +57,9 @@
   },
   "entity": {
     "sensor": {
+      "ws_outdoor_temperature": { "name": "Buitentemperatuur" },
+      "sun_azimuth": { "name": "Zon-azimut" },
+      "sun_elevation": { "name": "Zonhoogte" },
       "power_consumption": { "name": "Stroomverbruik" },
       "temperature": { "name": "Temperatuur" },
       "current_temperature": { "name": "Temperatuur" },
@@ -114,6 +117,12 @@
       }
     },
     "binary_sensor": {
+      "daynight": { "name": "Dag/Nacht" },
+      "twilight": { "name": "Schemering" },
+      "daylight": { "name": "Daglicht" },
+      "holiday": { "name": "Vakantie" },
+      "malfunction": { "name": "Storing" },
+      "service": { "name": "Service nodig" },
       "alarm_3_active": { "name": "Alarm 3" },
       "frost": { "name": "Vorst" },
       "hail": { "name": "Hagel" },

@@ -309,6 +309,21 @@ class DigitalStromApi:
             {"name": name, "value": "active" if active else "inactive"},
         )
 
+    async def get_all_states(self) -> list[dict]:
+        """Return all /usr/states as [{name, value}, ...]. One property query.
+
+        Values come back in their native type: int (1=active/2=inactive), bool
+        (day/night, daylight, twilight) or str (holiday: on/off)."""
+        try:
+            res = await self._request(
+                "/json/property/query",
+                {"query": "/usr/states/*(name,value)"},
+            )
+        except DigitalStromApiError:
+            return []
+        states = res.get("states", res) if isinstance(res, dict) else res
+        return states if isinstance(states, list) else []
+
     async def get_apartment_state(self, name: str) -> bool | None:
         """Read a dSS apartment system state. Returns True=active, False=inactive, None=unknown.
 

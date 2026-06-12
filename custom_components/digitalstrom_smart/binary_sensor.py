@@ -16,7 +16,7 @@ from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DOMAIN, MANUFACTURER, GROUP_JOKER, CONF_ENABLED_ZONES, APARTMENT_WEATHER_SCENES, WEATHER_TRANSLATION_KEYS, SCENE_RAIN, APARTMENT_ALARM_SCENES, ALARM_BINARY_SENSOR_KEYS, SCENE_FIRE, SCENE_DOOR_BELL, APARTMENT_SYSTEM_STATES
+from .const import DOMAIN, MANUFACTURER, GROUP_JOKER, CONF_ENABLED_ZONES, APARTMENT_WEATHER_SCENES, WEATHER_TRANSLATION_KEYS, SCENE_RAIN, APARTMENT_ALARM_SCENES, ALARM_BINARY_SENSOR_KEYS, SCENE_FIRE, SCENE_DOOR_BELL, APARTMENT_SYSTEM_STATES, APARTMENT_ENV_STATES
 from .coordinator import DigitalStromCoordinator
 
 _LOGGER = logging.getLogger(__name__)
@@ -111,11 +111,24 @@ async def async_setup_entry(
     for scene_nr, name in APARTMENT_ALARM_SCENES.items():
         entities.append(DigitalStromAlarmBinarySensor(coordinator, scene_nr, name))
 
-    # --- FREE: Apartment system states (Fire, Rain, Frost, Hail, Wind) — read-only ---
-    # Unified state-based model (driven by /usr/states + stateChange events). Replaces
-    # the old per-scene weather-protection sensor and the fire alarm-scene sensor.
+    # --- FREE: Apartment system states (Fire, Rain, Frost, Hail, Wind, Alarm 1-4) — read-only ---
+    # Unified state-based model (driven by /usr/states + stateChange events).
     for state_key in APARTMENT_SYSTEM_STATES:
         entities.append(DigitalStromSystemStateBinarySensor(coordinator, state_key))
+
+    # --- FREE: Environment states — Day/Night, Twilight, Daylight, Holiday ---
+    for state_key in APARTMENT_ENV_STATES:
+        entities.append(DigitalStromEnvBinarySensor(coordinator, state_key))
+
+    # --- PRO: Motion per zone (dSS zone.X.motion) ---
+    if coordinator.pro_enabled:
+        for zone_id in coordinator.motion_zones:
+            entities.append(DigitalStromMotionBinarySensor(coordinator, zone_id))
+
+    # --- PRO: Aggregate malfunction + service-required (diagnostic) ---
+    if coordinator.pro_enabled:
+        entities.append(DigitalStromProblemBinarySensor(coordinator, "malfunction"))
+        entities.append(DigitalStromProblemBinarySensor(coordinator, "service"))
 
     # --- PRO: User Defined States that behave as binary (active/inactive) ---
     if coordinator.pro_enabled:
@@ -297,6 +310,101 @@ class DigitalStromSystemStateBinarySensor(CoordinatorEntity, BinarySensorEntity)
     @property
     def is_on(self) -> bool:
         return self.coordinator.is_apartment_state_active(self._state_key)
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        self.async_write_ha_state()
+
+
+def _apartment_device_info(dss_id):
+    return {
+        "identifiers": {(DOMAIN, f"{dss_id}_apartment")},
+        "name": "Digital Strom Server",
+        "manufacturer": MANUFACTURER,
+        "model": "dSS",
+    }
+
+
+class DigitalStromEnvBinarySensor(CoordinatorEntity, BinarySensorEntity):
+    """Apartment environment state: Day/Night, Twilight, Daylight, Holiday. Free, read-only."""
+
+    _attr_has_entity_name = True
+
+    def __init__(self, coordinator: DigitalStromCoordinator, state_key: str) -> None:
+        super().__init__(coordinator)
+        self._state_key = state_key
+        cfg = APARTMENT_ENV_STATES[state_key]
+        dss_id = coordinator.dss_id
+        self._attr_unique_id = f"ds_{dss_id}_{cfg['bin_uid']}"
+        self._attr_translation_key = cfg["tkey"]
+        self._attr_icon = cfg["icon"]
+        if cfg.get("device_class"):
+            self._attr_device_class = BinarySensorDeviceClass(cfg["device_class"])
+        self._attr_device_info = _apartment_device_info(dss_id)
+
+    @property
+    def is_on(self) -> bool:
+        return self.coordinator.is_apartment_state_active(self._state_key)
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        self.async_write_ha_state()
+
+
+class DigitalStromMotionBinarySensor(CoordinatorEntity, BinarySensorEntity):
+    """Per-zone motion (dSS zone.X.motion state). PRO."""
+
+    _attr_has_entity_name = True
+    _attr_device_class = BinarySensorDeviceClass.MOTION
+
+    def __init__(self, coordinator: DigitalStromCoordinator, zone_id: int) -> None:
+        super().__init__(coordinator)
+        self._zone_id = zone_id
+        dss_id = coordinator.dss_id
+        zname = coordinator.zones.get(zone_id, {}).get("name") or f"Zone {zone_id}"
+        self._attr_unique_id = f"ds_{dss_id}_zone_{zone_id}_motion"
+        self._attr_name = f"{zname} Motion"
+        self._attr_device_info = _apartment_device_info(dss_id)
+
+    @property
+    def is_on(self) -> bool:
+        return self.coordinator.motion_active(self._zone_id)
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        self.async_write_ha_state()
+
+
+class DigitalStromProblemBinarySensor(CoordinatorEntity, BinarySensorEntity):
+    """Aggregate malfunction / service-required across all zones+groups. PRO, diagnostic."""
+
+    _attr_has_entity_name = True
+    _attr_device_class = BinarySensorDeviceClass.PROBLEM
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(self, coordinator: DigitalStromCoordinator, kind: str) -> None:
+        super().__init__(coordinator)
+        self._kind = kind  # "malfunction" | "service"
+        dss_id = coordinator.dss_id
+        self._attr_unique_id = f"ds_{dss_id}_apartment_{kind}"
+        self._attr_translation_key = kind
+        self._attr_icon = "mdi:alert-circle" if kind == "malfunction" else "mdi:wrench-clock"
+        self._attr_device_info = _apartment_device_info(dss_id)
+
+    @property
+    def is_on(self) -> bool:
+        if self._kind == "malfunction":
+            return self.coordinator.malfunction_active()
+        return self.coordinator.service_active()
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        zones = (
+            self.coordinator.malfunction_zones
+            if self._kind == "malfunction"
+            else self.coordinator.service_zones
+        )
+        return {"affected": zones}
 
     @callback
     def _handle_coordinator_update(self) -> None:

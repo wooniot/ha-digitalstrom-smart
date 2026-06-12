@@ -144,6 +144,20 @@ APARTMENT_SYSTEM_STATES = {
     "alarm4": {"name": "Alarm 4", "tkey": "alarm_4_active",  "device_class": "safety",   "icon": "mdi:alarm-light",     "bin_uid": "alarm_77"},
 }
 
+# Environment states from /usr/states (solar computer / presence simulator). FREE,
+# read-only binary sensors. Values are bool (day/night, daylight, twilight) or a
+# string ("on"/"off" for holiday) — normalised in coordinator._norm_state().
+APARTMENT_ENV_STATES = {
+    "daynight": {"tkey": "daynight", "device_class": None,    "icon": "mdi:theme-light-dark",    "bin_uid": "state_daynight"},
+    "twilight": {"tkey": "twilight", "device_class": None,    "icon": "mdi:weather-sunset",      "bin_uid": "state_twilight"},
+    "daylight": {"tkey": "daylight", "device_class": "light", "icon": "mdi:white-balance-sunny", "bin_uid": "state_daylight"},
+    "holiday":  {"tkey": "holiday",  "device_class": None,    "icon": "mdi:bag-suitcase",        "bin_uid": "state_holiday"},
+}
+
+# Regex for per-zone motion states: zone.<id>.motion  (PRO, device_class motion)
+import re as _re
+MOTION_STATE_RE = _re.compile(r"^zone\.(\d+)\.motion$")
+
 # Weather protection: scene_nr -> translation key
 WEATHER_TRANSLATION_KEYS = {
     SCENE_RAIN: "rain_protection",

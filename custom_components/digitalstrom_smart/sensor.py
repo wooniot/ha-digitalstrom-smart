@@ -131,6 +131,14 @@ DEVICE_SENSOR_MAP = {
     },
 }
 
+# Weather-service outdoor sensors from /json/apartment/getSensorValues (PRO).
+# Available without a physical weather station — comes from the dSS weather service.
+OUTDOOR_WS_SENSORS = {
+    "temperature":  {"tkey": "ws_outdoor_temperature", "device_class": SensorDeviceClass.TEMPERATURE, "unit": UnitOfTemperature.CELSIUS, "icon": "mdi:thermometer"},
+    "sunazimuth":   {"tkey": "sun_azimuth",   "device_class": None, "unit": "°", "icon": "mdi:sun-compass"},
+    "sunelevation": {"tkey": "sun_elevation", "device_class": None, "unit": "°", "icon": "mdi:weather-sunny"},
+}
+
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -216,6 +224,12 @@ async def async_setup_entry(
                         coordinator, sensor_key, sensor_def
                     )
                 )
+
+    # --- PRO: Weather-service outdoor temperature + sun position (no station needed) ---
+    if coordinator.pro_enabled:
+        for ws_key, ws_cfg in OUTDOOR_WS_SENSORS.items():
+            if coordinator.outdoor_value(ws_key) is not None:
+                entities.append(DigitalStromWeatherServiceSensor(coordinator, ws_key, ws_cfg))
 
     # --- PRO: Per-circuit (dSM) power + energy sensors ---
     if coordinator.pro_enabled and coordinator.circuits:
@@ -515,6 +529,40 @@ class DigitalStromDeviceSensor(CoordinatorEntity, SensorEntity):
         if val is not None:
             return round(val, 1)
         return None
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        self.async_write_ha_state()
+
+
+class DigitalStromWeatherServiceSensor(CoordinatorEntity, SensorEntity):
+    """Weather-service outdoor temperature / sun position (apartment, PRO).
+
+    Sourced from /json/apartment/getSensorValues — works without a weather station."""
+
+    _attr_has_entity_name = True
+    _attr_state_class = SensorStateClass.MEASUREMENT
+
+    def __init__(self, coordinator: DigitalStromCoordinator, key: str, cfg: dict) -> None:
+        super().__init__(coordinator)
+        self._key = key
+        dss_id = coordinator.dss_id
+        self._attr_unique_id = f"ds_{dss_id}_ws_{key}"
+        self._attr_translation_key = cfg["tkey"]
+        self._attr_icon = cfg["icon"]
+        self._attr_native_unit_of_measurement = cfg["unit"]
+        if cfg.get("device_class"):
+            self._attr_device_class = cfg["device_class"]
+        self._attr_device_info = {
+            "identifiers": {(DOMAIN, f"{dss_id}_apartment")},
+            "name": "Digital Strom Server",
+            "manufacturer": MANUFACTURER,
+            "model": "dSS",
+        }
+
+    @property
+    def native_value(self):
+        return self.coordinator.outdoor_value(self._key)
 
     @callback
     def _handle_coordinator_update(self) -> None:
