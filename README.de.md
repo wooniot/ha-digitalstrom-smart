@@ -5,7 +5,7 @@
 
 Eine zonenbasierte, eventgesteuerte Home Assistant Integration für **Digital Strom** Hausautomationssysteme. Entwickelt von [Woon IoT BV](https://wooniot.nl) — Digital Strom Installationsspezialisten.
 
-> **[English version](README.md)** | Deutsch
+> [English](README.md) | **Deutsch** | [Nederlands](README.nl.md)
 
 ## Voraussetzungen
 

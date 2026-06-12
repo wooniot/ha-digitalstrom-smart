@@ -5,7 +5,7 @@
 
 A zone-based, event-driven Home Assistant integration for **Digital Strom** home automation systems. Built by [Woon IoT BV](https://wooniot.nl) — Digital Strom installation specialists.
 
-> English | **[Deutsch](README.de.md)**
+> **English** | [Deutsch](README.de.md) | [Nederlands](README.nl.md)
 
 ## Requirements
 
