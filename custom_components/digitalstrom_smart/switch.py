@@ -10,7 +10,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .api import DigitalStromApiError
-from .const import DOMAIN, MANUFACTURER, GROUP_JOKER, CONF_ENABLED_ZONES, APARTMENT_ALARM_SCENES, ALARM_TRANSLATION_KEYS, SCENE_DOOR_BELL, APARTMENT_SYSTEM_STATES
+from .const import DOMAIN, MANUFACTURER, GROUP_JOKER, CONF_ENABLED_ZONES, APARTMENT_ALARM_SCENES, ALARM_TRANSLATION_KEYS, SCENE_DOOR_BELL
 from .coordinator import DigitalStromCoordinator
 
 _LOGGER = logging.getLogger(__name__)
@@ -42,16 +42,14 @@ async def async_setup_entry(
                 DigitalStromJokerSwitch(coordinator, zone_id, zone_info, dev)
             )
 
-    # --- FREE: Apartment alarm switches — trigger Alarm 1/2/4, Panic, Doorbell ---
+    # --- FREE: Apartment scene switches — trigger Panic + Doorbell ---
+    # These propagate via /json/apartment/callScene. The dSS weather/alarm STATES
+    # (fire/rain/frost/hail/wind/alarm 1-4) are read-only (see binary_sensor.py) — the
+    # dSS rejects setting them — so they intentionally have no switch.
     for scene_nr, name in APARTMENT_ALARM_SCENES.items():
         entities.append(
             DigitalStromAlarmSwitch(coordinator, scene_nr, name)
         )
-
-    # --- FREE: Apartment system-state switches (Fire, Rain, Frost, Hail, Wind) ---
-    # Setting a state triggers the dSS protection/alarm — a real physical effect.
-    for state_key in APARTMENT_SYSTEM_STATES:
-        entities.append(DigitalStromSystemStateSwitch(coordinator, state_key))
 
     # Configurator timers are exposed as run-once buttons (see button.py)
     # rather than as switches: enabling/disabling klokken stays in the dSS.
@@ -110,52 +108,6 @@ class DigitalStromAlarmSwitch(CoordinatorEntity, SwitchEntity):
     async def async_turn_off(self, **kwargs) -> None:
         await self.coordinator.undo_apartment_scene(self._scene_nr)
         self.coordinator.apartment_alarms.discard(self._scene_nr)
-        self.async_write_ha_state()
-
-    @callback
-    def _handle_coordinator_update(self) -> None:
-        self.async_write_ha_state()
-
-
-class DigitalStromSystemStateSwitch(CoordinatorEntity, SwitchEntity):
-    """Set a dSS apartment system state (Fire, Rain, Frost, Hail, Wind). Free.
-
-    Activating triggers the dSS protection/alarm for that state — a real physical
-    effect (e.g. wind/hail closes shades into a safe position, fire raises the alarm)."""
-
-    _attr_has_entity_name = True
-
-    def __init__(self, coordinator: DigitalStromCoordinator, state_key: str) -> None:
-        super().__init__(coordinator)
-        self._state_key = state_key
-        cfg = APARTMENT_SYSTEM_STATES[state_key]
-        dss_id = coordinator.dss_id
-        self._attr_unique_id = f"ds_{dss_id}_{cfg['sw_uid']}"
-        self._attr_translation_key = cfg["tkey"]
-        self._attr_icon = cfg["icon"]
-        self._attr_device_info = {
-            "identifiers": {(DOMAIN, f"{dss_id}_apartment")},
-            "name": "Digital Strom Server",
-            "manufacturer": MANUFACTURER,
-            "model": "dSS",
-        }
-
-    @property
-    def is_on(self) -> bool:
-        return self.coordinator.is_apartment_state_active(self._state_key)
-
-    async def async_turn_on(self, **kwargs) -> None:
-        try:
-            await self.coordinator.set_apartment_state(self._state_key, True)
-        except DigitalStromApiError as err:
-            _LOGGER.error("Failed to activate state %s: %s", self._state_key, err)
-        self.async_write_ha_state()
-
-    async def async_turn_off(self, **kwargs) -> None:
-        try:
-            await self.coordinator.set_apartment_state(self._state_key, False)
-        except DigitalStromApiError as err:
-            _LOGGER.error("Failed to deactivate state %s: %s", self._state_key, err)
         self.async_write_ha_state()
 
     @callback

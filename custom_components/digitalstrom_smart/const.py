@@ -107,46 +107,41 @@ APARTMENT_PRESENCE_KEYS = {
 # All presence scene numbers (for detection in events)
 PRESENCE_SCENE_NUMBERS = set(APARTMENT_PRESENCE_SCENES.keys())
 
-# Alarm scene mapping: scene_nr -> display name.
-# Note: Fire/Brand is NOT here — it is the dSS "fire" system state (see
-# APARTMENT_SYSTEM_STATES), exposed uniformly with rain/frost/hail/wind.
+# User-triggerable apartment scenes that propagate via /json/apartment/callScene:
+# only Panic and Doorbell. (Alarm 1-4 and Fire are dSS *states* set by the alarm/weather
+# system — read-only, see APARTMENT_SYSTEM_STATES. callScene for the alarm scenes is a
+# no-op on the dSS and /json/state/set is rejected, so they cannot be triggered from HA.)
 APARTMENT_ALARM_SCENES = {
-    SCENE_ALARM_1: "Alarm 1",
-    SCENE_ALARM_2: "Alarm 2",
-    SCENE_ALARM_4: "Alarm 4",
     SCENE_PANIC: "Panic",
     SCENE_DOOR_BELL: "Doorbell",
 }
 
-# Alarm scene mapping: scene_nr -> translation key
 ALARM_TRANSLATION_KEYS = {
-    SCENE_ALARM_1: "alarm_1",
-    SCENE_ALARM_2: "alarm_2",
-    SCENE_ALARM_4: "alarm_4",
     SCENE_PANIC: "panic",
     SCENE_DOOR_BELL: "doorbell",
 }
 
-# Alarm binary sensor: scene_nr -> translation key (separate from switch keys)
 ALARM_BINARY_SENSOR_KEYS = {
-    SCENE_ALARM_1: "alarm_1_active",
-    SCENE_ALARM_2: "alarm_2_active",
-    SCENE_ALARM_4: "alarm_4_active",
     SCENE_PANIC: "panic_active",
     SCENE_DOOR_BELL: "doorbell_active",
 }
 
-# dSS apartment system states (/usr/states; value 1=active, 2=inactive). Each is exposed
-# uniformly as a read-only binary_sensor AND a settable switch (set via /json/state/set).
-# Keys are the exact dSS state names. bin_uid/sw_uid keep the legacy unique_id for fire
-# (and the rain binary) so existing entities survive the move to this unified model.
+# dSS apartment system states (/usr/states; value 1=active, 2=inactive). Exposed as
+# READ-ONLY binary_sensors. These are set by the dSS itself (weather service, smoke/alarm
+# devices) and are NOT user-settable: /json/state/set is rejected and callScene doesn't
+# drive them, so there is deliberately NO switch. bin_uid keeps the legacy unique_id
+# (fire/rain/alarm 1·2·4) so existing entities survive.
 #   device_class strings map to BinarySensorDeviceClass in binary_sensor.py.
 APARTMENT_SYSTEM_STATES = {
-    "fire":  {"name": "Fire",  "tkey": "fire",            "device_class": "smoke",    "icon": "mdi:fire",            "bin_uid": "alarm_76",    "sw_uid": "apartment_alarm_76"},
-    "rain":  {"name": "Rain",  "tkey": "rain_protection", "device_class": "moisture", "icon": "mdi:weather-pouring", "bin_uid": "weather_85",  "sw_uid": "state_rain"},
-    "frost": {"name": "Frost", "tkey": "frost",           "device_class": "cold",     "icon": "mdi:snowflake",      "bin_uid": "state_frost", "sw_uid": "state_frost"},
-    "hail":  {"name": "Hail",  "tkey": "hail",            "device_class": None,       "icon": "mdi:weather-hail",   "bin_uid": "state_hail",  "sw_uid": "state_hail"},
-    "wind":  {"name": "Wind",  "tkey": "wind",            "device_class": None,       "icon": "mdi:weather-windy",  "bin_uid": "state_wind",  "sw_uid": "state_wind"},
+    "fire":   {"name": "Fire",    "tkey": "fire",            "device_class": "smoke",    "icon": "mdi:fire",            "bin_uid": "alarm_76"},
+    "rain":   {"name": "Rain",    "tkey": "rain_protection", "device_class": "moisture", "icon": "mdi:weather-pouring", "bin_uid": "weather_85"},
+    "frost":  {"name": "Frost",   "tkey": "frost",           "device_class": "cold",     "icon": "mdi:snowflake",      "bin_uid": "state_frost"},
+    "hail":   {"name": "Hail",    "tkey": "hail",            "device_class": None,       "icon": "mdi:weather-hail",   "bin_uid": "state_hail"},
+    "wind":   {"name": "Wind",    "tkey": "wind",            "device_class": None,       "icon": "mdi:weather-windy",  "bin_uid": "state_wind"},
+    "alarm":  {"name": "Alarm 1", "tkey": "alarm_1_active",  "device_class": "safety",   "icon": "mdi:alarm-light",     "bin_uid": "alarm_74"},
+    "alarm2": {"name": "Alarm 2", "tkey": "alarm_2_active",  "device_class": "safety",   "icon": "mdi:alarm-light",     "bin_uid": "alarm_75"},
+    "alarm3": {"name": "Alarm 3", "tkey": "alarm_3_active",  "device_class": "safety",   "icon": "mdi:alarm-light",     "bin_uid": "state_alarm3"},
+    "alarm4": {"name": "Alarm 4", "tkey": "alarm_4_active",  "device_class": "safety",   "icon": "mdi:alarm-light",     "bin_uid": "alarm_77"},
 }
 
 # Weather protection: scene_nr -> translation key

@@ -113,6 +113,7 @@
       }
     },
     "binary_sensor": {
+      "alarm_3_active": { "name": "Alarm 3" },
       "frost": { "name": "Frost" },
       "hail": { "name": "Hail" },
       "wind": { "name": "Wind" },
