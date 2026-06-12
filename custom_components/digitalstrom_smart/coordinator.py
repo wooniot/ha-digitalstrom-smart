@@ -1282,7 +1282,13 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
                 events = await self.api.get_events()
                 self._reconnect_delay = RECONNECT_INITIAL
                 for event in events:
-                    self._process_event(event)
+                    # One malformed event (e.g. a non-numeric sceneID) must never kill
+                    # the whole event loop — log it and keep processing the rest.
+                    try:
+                        self._process_event(event)
+                    except Exception as err:  # noqa: BLE001 - defensive, per-event
+                        _LOGGER.warning("Skipping malformed dSS event %s: %s",
+                                        event.get("name", "?"), err)
 
             except DigitalStromAuthError:
                 _LOGGER.warning("Auth error in event loop, reconnecting...")

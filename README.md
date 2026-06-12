@@ -37,10 +37,10 @@ Unlike traditional per-device polling integrations, Digital Strom Smart uses the
 - **Scene activation** with imported dS scene names (the recommended way to control Digital Strom)
 - **Temperature sensors** per zone (including rooms without heating, using any available source: zone sensors, device sensors)
 - **Device sensors** — Ulux and similar devices expose CO2, brightness, temperature, and humidity as individual sensor entities
-- **Per-device power measurement (W)** — SW-KL200, SW-ZWS200, SW-SSL200, and SW-UMR200 report real-time power (W), available immediately after HA restart, not just after the first event _(cumulative energy in Wh is Pro)_
 - **Apartment power monitoring** — apartment-level power consumption (W)
-- **Alarm binary sensors** — Fire/Brand, Alarm 1/2/4, Panic, and Doorbell appear as binary sensors under the Digital Strom Server device, with live updates from dSS alarm events
-- **System scene triggers** — raise Panic, Fire/Brand, Alarm 1-4 and Doorbell apartment-wide from HA as switches
+- **Alarm binary sensors** — Fire/Brand, Alarm 1-4, Panic, and Doorbell appear as binary sensors under the Digital Strom Server device, with live updates from dSS alarm events
+- **System scene switches** — trigger Panic, Fire/Brand, Alarm 1-4 and Doorbell apartment-wide from HA as switches (via `apartment/callScene`); each switch reads the real dSS state back, so it returns to off by itself if the dSS ignores the scene
+- **Environment states** — Day/Night, Twilight, Daylight and Holiday from the dSS as read-only binary sensors
 - **Event-driven** — instant state updates when someone uses a wall switch
 - **Scenes for all groups** — Light, Shade, and Heating scenes
 
@@ -54,8 +54,9 @@ Unlock advanced features with a Pro license key from [wooniot.nl/pro](https://wo
 - **User Defined States** — custom and apartment-wide dSS states appear as **sensors / binary sensors** with live updates from `stateChange` events
 - **Per-circuit (dSM) energy** — power **and** lifetime kWh per dSM meter, each as its own device, ready for the **HA Energy Dashboard**
 - **Apartment kWh sensor** — aggregated cumulative energy across all dSMs (Energy Dashboard ready)
-- **Per-device energy (Wh)** — cumulative energy on metering devices (per-device power in W stays free)
-- **Outdoor weather sensors** — temperature, humidity, brightness, wind speed, wind gust, air pressure
+- **Motion per zone** — per-zone motion binary sensors from the dSS `zone.X.motion` states
+- **Malfunction & service** — aggregate diagnostic binary sensors that flag any component reporting a malfunction or service-required
+- **Outdoor weather sensors** — temperature, humidity, brightness, wind speed, wind gust, air pressure (weather station), plus a station-free outdoor temperature + sun position from the dSS weather service
 - **Rain detection** — real-time rain sensor via dSS system-protection state events
 - **Weather protection sensors** — wind/rain protection scene states as binary sensors
 - **Device identification** — blink any device for identification
@@ -123,21 +124,24 @@ Individual Joker devices:
 
 Device-level sensors (Ulux, etc.):
 - `sensor.<zone>_<device>_temperature` — Device temperature
-- `sensor.<zone>_<device>_power` — Device power (SW-KL200 / SW-ZWS200 / SW-SSL200 / SW-UMR200, Watts — requires metering enabled in dSS Configurator)
 - `sensor.<zone>_<device>_humidity` — Device humidity
 - `sensor.<zone>_<device>_co2` — Device CO2 level
 - `sensor.<zone>_<device>_brightness` — Device brightness
+
+> **Note:** per-device power (W) and per-device energy (Wh) sensors were removed in v3.7.6. Reading them required polling the dSS sensor bus, which starved the dSM metering controller and corrupted the dSM energy values. Power and energy are now measured at the dSM (circuit) level only — see *Per-circuit (dSM) meters* below.
 
 Apartment-level (Free):
 - `sensor.dss_power_consumption` — Total power (Watts)
 - `sensor.dss_license_status` — License status: Pro/Free with validation details (diagnostic)
 
-Alarm sensors (Digital Strom Server device) — **Free**:
+Alarm & system states (Digital Strom Server device) — **Free**:
 - `binary_sensor.dss_fire` — Fire alarm (Brand), device class: smoke
-- `binary_sensor.dss_alarm_1` / `alarm_2` / `alarm_4` — Alarm scenes 1, 2, 4
+- `binary_sensor.dss_alarm_1` … `alarm_4` — Alarm states 1-4
 - `binary_sensor.dss_panic` — Panic alarm
 - `binary_sensor.dss_doorbell` — Doorbell active state
-- `switch.dss_alarm_*` — Trigger Panic / Fire / Alarm 1-4 / Doorbell apartment-wide
+- `binary_sensor.dss_frost` / `hail` / `wind` / `rain` — Weather/protection states (read-only)
+- `binary_sensor.dss_daynight` / `twilight` / `daylight` / `holiday` — Environment states (read-only)
+- `switch.dss_fire`, `switch.dss_alarm_1` … `alarm_4`, `switch.dss_panic`, `switch.dss_doorbell` — Trigger the matching apartment scene via `apartment/callScene`. The switch mirrors the real dSS state, so it flips back to off by itself if the dSS ignores the scene
 
 Per-circuit (dSM meters) — **Pro**:
 - `sensor.<circuit_name>_power` — Instantaneous power per dSM meter (W)
@@ -151,8 +155,10 @@ User Defined Actions & States (apartment) — **Pro**:
 Other Pro entities (requires license):
 - `climate.<zone>_climate` — Zone climate control with target temperature
 - `select.<...>_presence` — Apartment presence mode (Present / Absent / Sleeping / …)
-- `sensor.<zone>_<device>_energy` — Per-device cumulative energy (Wh) — per-device power (W) stays free
-- `sensor.dss_outdoor_*` — Outdoor weather sensors
+- `binary_sensor.<zone>_motion` — Per-zone motion (dSS `zone.X.motion` states)
+- `binary_sensor.dss_malfunction` / `dss_service` — Aggregate malfunction / service-required (diagnostic)
+- `sensor.dss_outdoor_*` — Outdoor weather-station sensors
+- `sensor.dss_ws_outdoor_temperature` / sun position — Station-free outdoor data from the dSS weather service
 - `binary_sensor.dss_rain` — Rain detection
 - `binary_sensor.dss_*_protection` — Wind/rain weather-protection scene states
 
@@ -225,6 +231,15 @@ Digital Strom Smart supports multiple languages for all entity names, configurat
 Home Assistant automatically uses the correct language based on your system language setting. Want to add a translation? PRs welcome — just create a new JSON file in `custom_components/digitalstrom_smart/translations/`.
 
 ## Changelog
+
+### v4.0.0 (2026-06-12) — System scenes, robust metering & environment states
+
+- **System alarm scenes as switches** — Fire/Brand and Alarm 1-4 now get a switch (next to the read-only status binary sensor) that triggers the scene via `apartment/callScene`. Each switch reads the real dSS state back, so it returns to off by itself if the dSS ignores the scene.
+- **Environment states (Free)** — Day/Night, Twilight, Daylight and Holiday exposed as read-only binary sensors.
+- **Per-zone motion + malfunction/service (Pro)** — per-zone motion binary sensors, plus aggregate malfunction and service-required diagnostics.
+- **Weather service (Pro)** — station-free outdoor temperature and sun position from the dSS weather service.
+- **Metering rework** — per-device power (W) and energy (Wh) sensors were removed: polling the dSS sensor bus for them starved the dSM metering controller and corrupted the dSM energy values. Power and energy are now read at the dSM (circuit) level only. Per-device power is event-driven, never polled.
+- **Reliability** — IP-change reconfigure + DHCP discovery, faster non-blocking startup, and a hardened event loop (one malformed event can no longer stop the loop). Apartment system states (fire/rain/frost/hail/wind/alarm) are read-only where the dSS rejects writes.
 
 ### v3.2.1 (2026-05-19) — Bug fixes
 

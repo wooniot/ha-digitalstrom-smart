@@ -37,10 +37,10 @@ Im Gegensatz zu herkömmlichen Integrationen, die jedes Gerät einzeln abfragen,
 - **Szenenaktivierung** mit importierten dS-Szenennamen (die empfohlene Methode zur Steuerung von Digital Strom)
 - **Temperatursensoren** pro Zone (auch Räume ohne Heizung, aus allen verfügbaren Quellen: Zonensensoren, Gerätesensoren)
 - **Gerätesensoren** — Ulux und ähnliche Geräte stellen CO2, Helligkeit, Temperatur und Feuchtigkeit als einzelne Sensor-Entitäten bereit
-- **Geräte-Leistungsmessung (W)** — SW-KL200, SW-ZWS200, SW-SSL200 und SW-UMR200 liefern die aktuelle Leistung (W) _(kumulierte Energie in Wh ist Pro)_
 - **Leistungsüberwachung auf Wohnungsebene** — Gesamtverbrauch (W)
-- **Alarm-Binärsensoren** — Feuer/Brand, Alarm 1/2/4, Panik und Türklingel als Binärsensoren unter dem Digital-Strom-Server-Gerät, mit Live-Updates aus dSS-Alarmereignissen
-- **Systemszenen auslösen** — Panik, Feuer/Brand, Alarm 1-4 und Türklingel wohnungsweit aus HA als Schalter auslösen
+- **Alarm-Binärsensoren** — Feuer/Brand, Alarm 1-4, Panik und Türklingel als Binärsensoren unter dem Digital-Strom-Server-Gerät, mit Live-Updates aus dSS-Alarmereignissen
+- **Systemszenen als Schalter** — Panik, Feuer/Brand, Alarm 1-4 und Türklingel wohnungsweit aus HA auslösen (über `apartment/callScene`); jeder Schalter liest den echten dSS-Zustand zurück und kehrt von selbst auf Aus zurück, wenn der dSS die Szene ignoriert
+- **Umgebungszustände** — Tag/Nacht, Dämmerung, Tageslicht und Urlaub vom dSS als schreibgeschützte Binärsensoren
 - **Eventgesteuert** — sofortige Status-Updates bei Betätigung eines Wandschalters
 - **Szenen für alle Gruppen** — Licht-, Beschattungs- und Heizungsszenen
 
@@ -54,8 +54,9 @@ Erweiterte Funktionen mit einem Pro-Lizenzschlüssel von [wooniot.nl/pro](https:
 - **Benutzerdefinierte Zustände** — eigene und wohnungsweite dSS-Zustände erscheinen als **Sensoren / Binärsensoren** mit Live-Updates aus `stateChange`-Ereignissen
 - **Energie pro Stromkreis (dSM)** — Leistung **und** kumulierte kWh pro dSM-Zähler, jeder als eigenes Gerät, bereit für das **HA Energie-Dashboard**
 - **Wohnungs-kWh-Sensor** — aggregierte kumulierte Energie über alle dSMs (Energie-Dashboard)
-- **Geräte-Energie (Wh)** — kumulierte Energie auf Messgeräten (Geräte-Leistung in W bleibt kostenlos)
-- **Außenwettersensoren** — Temperatur, Feuchtigkeit, Helligkeit, Windgeschwindigkeit, Windböen, Luftdruck
+- **Bewegung pro Zone** — Bewegungs-Binärsensoren pro Zone aus den dSS-Zuständen `zone.X.motion`
+- **Störung & Wartung** — aggregierte Diagnose-Binärsensoren, die melden, wenn eine Komponente eine Störung oder Wartungsbedarf meldet
+- **Außenwettersensoren** — Temperatur, Feuchtigkeit, Helligkeit, Windgeschwindigkeit, Windböen, Luftdruck (Wetterstation), zusätzlich stationslose Außentemperatur + Sonnenstand aus dem dSS-Wetterdienst
 - **Regenerkennung** — Echtzeit-Regensensor über dSS-System-Protection-Ereignisse
 - **Wetterschutz-Sensoren** — Wind-/Regenschutz-Szenenzustände als Binärsensoren
 - **Geräteidentifikation** — Gerät blinken lassen zur Identifikation
@@ -127,8 +128,18 @@ Gerätesensoren (Ulux usw.):
 - `sensor.<zone>_<gerät>_co2` — Geräte-CO2-Wert
 - `sensor.<zone>_<gerät>_brightness` — Gerätehelligkeit
 
+> **Hinweis:** Sensoren für Geräte-Leistung (W) und Geräte-Energie (Wh) wurden in v3.7.6 entfernt. Ihr Auslesen erforderte das Pollen des dSS-Sensorbusses, was den dSM-Messcontroller aushungerte und die dSM-Energiewerte verfälschte. Leistung und Energie werden jetzt nur noch auf dSM-(Stromkreis-)Ebene gemessen — siehe *Pro Stromkreis (dSM-Zähler)* unten.
+
 Wohnungsebene (Kostenlos):
 - `sensor.dss_power_consumption` — Gesamtleistung (Watt)
+
+Alarm- & Systemzustände (Digital-Strom-Server-Gerät) — **Kostenlos**:
+- `binary_sensor.dss_fire` — Feueralarm (Brand), Geräteklasse: smoke
+- `binary_sensor.dss_alarm_1` … `alarm_4` — Alarmzustände 1-4
+- `binary_sensor.dss_panic` / `dss_doorbell` — Panik / Türklingel
+- `binary_sensor.dss_frost` / `hail` / `wind` / `rain` — Wetter-/Schutzzustände (schreibgeschützt)
+- `binary_sensor.dss_daynight` / `twilight` / `daylight` / `holiday` — Umgebungszustände (schreibgeschützt)
+- `switch.dss_fire`, `switch.dss_alarm_1` … `alarm_4`, `switch.dss_panic`, `switch.dss_doorbell` — Lösen die passende Wohnungsszene über `apartment/callScene` aus. Der Schalter spiegelt den echten dSS-Zustand und kehrt von selbst auf Aus zurück, wenn der dSS die Szene ignoriert
 
 Pro Stromkreis (dSM-Zähler) — **Pro**:
 - `sensor.<circuit_name>_power` — Leistung pro dSM-Zähler (jeder Zähler als eigenes Gerät)
@@ -142,8 +153,10 @@ Benutzerdefinierte Aktionen & Zustände (Wohnung) — **Pro**:
 Weitere Pro-Entitäten (Lizenz erforderlich):
 - `climate.<zone>_climate` — Zonen-Klimasteuerung mit Zieltemperatur
 - `select.<...>_presence` — Anwesenheitsmodus der Wohnung (Anwesend / Abwesend / Schlafen / …)
-- `sensor.<zone>_<gerät>_energy` — Geräte-Energie (Wh) — Geräte-Leistung (W) bleibt kostenlos
-- `sensor.dss_outdoor_*` — Außenwettersensoren
+- `binary_sensor.<zone>_motion` — Bewegung pro Zone (dSS-Zustände `zone.X.motion`)
+- `binary_sensor.dss_malfunction` / `dss_service` — Aggregierte Störung / Wartungsbedarf (Diagnose)
+- `sensor.dss_outdoor_*` — Außenwetterstation-Sensoren
+- `sensor.dss_ws_outdoor_temperature` / Sonnenstand — Stationslose Außendaten aus dem dSS-Wetterdienst
 - `binary_sensor.dss_rain` — Regenerkennung
 
 ## Dienste
@@ -210,6 +223,15 @@ Digital Strom Smart unterstützt mehrere Sprachen für alle Entitätsnamen, Konf
 Home Assistant verwendet automatisch die richtige Sprache basierend auf Ihrer Systemspracheinstellung. Möchten Sie eine Übersetzung hinzufügen? PRs willkommen — erstellen Sie einfach eine neue JSON-Datei in `custom_components/digitalstrom_smart/translations/`.
 
 ## Änderungsprotokoll
+
+### v4.0.0 (12.06.2026) — Systemszenen, robuste Messung & Umgebungszustände
+
+- **Systemalarmszenen als Schalter** — Feuer/Brand und Alarm 1-4 erhalten jetzt einen Schalter (neben dem schreibgeschützten Status-Binärsensor), der die Szene über `apartment/callScene` auslöst. Jeder Schalter liest den echten dSS-Zustand zurück und kehrt von selbst auf Aus zurück, wenn der dSS die Szene ignoriert.
+- **Umgebungszustände (Kostenlos)** — Tag/Nacht, Dämmerung, Tageslicht und Urlaub als schreibgeschützte Binärsensoren.
+- **Bewegung pro Zone + Störung/Wartung (Pro)** — Bewegungs-Binärsensoren pro Zone sowie aggregierte Störungs- und Wartungs-Diagnose.
+- **Wetterdienst (Pro)** — stationslose Außentemperatur und Sonnenstand aus dem dSS-Wetterdienst.
+- **Messung überarbeitet** — Sensoren für Geräte-Leistung (W) und -Energie (Wh) wurden entfernt: ihr Pollen hungerte den dSM-Messcontroller aus und verfälschte die dSM-Energiewerte. Leistung und Energie werden jetzt nur noch auf dSM-(Stromkreis-)Ebene gelesen; Geräte-Leistung ist eventgesteuert, wird nie gepollt.
+- **Zuverlässigkeit** — Rekonfiguration bei IP-Wechsel + DHCP-Erkennung, schnellerer nicht-blockierender Start und eine gehärtete Ereignisschleife (ein fehlerhaftes Ereignis kann die Schleife nicht mehr stoppen).
 
 ### v2.9.0 (29.03.2026)
 - **Vollständige i18n** — alle Entitätsnamen jetzt über das native Home Assistant Übersetzungssystem übersetzbar

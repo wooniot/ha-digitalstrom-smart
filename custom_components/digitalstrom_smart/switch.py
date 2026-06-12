@@ -105,17 +105,28 @@ class DigitalStromAlarmSwitch(CoordinatorEntity, SwitchEntity):
         return self.coordinator.is_alarm_active(self._scene_nr)
 
     async def async_turn_on(self, **kwargs) -> None:
-        await self.coordinator.call_apartment_scene(self._scene_nr)
+        try:
+            await self.coordinator.call_apartment_scene(self._scene_nr)
+        except DigitalStromApiError as err:
+            _LOGGER.error("Failed to trigger apartment scene %s: %s", self._scene_nr, err)
+            return
         self.coordinator.apartment_alarms.add(self._scene_nr)
         self.async_write_ha_state()
-        # Doorbell is a pulse — auto-reset after 3 seconds
+        # Doorbell is a pulse — auto-reset after 3 seconds. try/finally so the state is
+        # cleared even if the sleep is cancelled (e.g. integration reload mid-pulse).
         if self._scene_nr == SCENE_DOOR_BELL:
-            await asyncio.sleep(3)
-            self.coordinator.apartment_alarms.discard(self._scene_nr)
-            self.async_write_ha_state()
+            try:
+                await asyncio.sleep(3)
+            finally:
+                self.coordinator.apartment_alarms.discard(self._scene_nr)
+                self.async_write_ha_state()
 
     async def async_turn_off(self, **kwargs) -> None:
-        await self.coordinator.undo_apartment_scene(self._scene_nr)
+        try:
+            await self.coordinator.undo_apartment_scene(self._scene_nr)
+        except DigitalStromApiError as err:
+            _LOGGER.error("Failed to undo apartment scene %s: %s", self._scene_nr, err)
+            return
         self.coordinator.apartment_alarms.discard(self._scene_nr)
         self.async_write_ha_state()
 
@@ -155,12 +166,22 @@ class DigitalStromSystemTriggerSwitch(CoordinatorEntity, SwitchEntity):
         return self.coordinator.is_apartment_state_active(self._state_id)
 
     async def async_turn_on(self, **kwargs) -> None:
-        await self.coordinator.call_apartment_scene(self._scene)
+        try:
+            await self.coordinator.call_apartment_scene(self._scene)
+        except DigitalStromApiError as err:
+            _LOGGER.error("Failed to trigger system scene %s (%s): %s",
+                          self._scene, self._state_id, err)
+            return
         self.coordinator.set_apartment_state_local(self._state_id, True)
         self.async_write_ha_state()
 
     async def async_turn_off(self, **kwargs) -> None:
-        await self.coordinator.undo_apartment_scene(self._scene)
+        try:
+            await self.coordinator.undo_apartment_scene(self._scene)
+        except DigitalStromApiError as err:
+            _LOGGER.error("Failed to undo system scene %s (%s): %s",
+                          self._scene, self._state_id, err)
+            return
         self.coordinator.set_apartment_state_local(self._state_id, False)
         self.async_write_ha_state()
 
