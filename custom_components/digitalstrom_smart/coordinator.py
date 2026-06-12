@@ -1029,12 +1029,16 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
             _LOGGER.debug("Could not poll apartment presence: %s", err)
 
     async def call_apartment_scene(self, scene: int) -> None:
-        """Call an apartment-wide scene (zone 0, group 0)."""
-        await self.api.call_scene(0, 0, scene)
+        """Raise an apartment-wide system scene (Panic, Fire/Brand, Alarm 1-4, Presence).
+
+        Uses /json/apartment/callScene so the scene fans out across ALL zones. The old
+        zone/callScene(id=0) only hit the broadcast group on zone 0 — Panic worked that
+        way but Alarm/Fire didn't propagate."""
+        await self.api.apartment_call_scene(scene)
 
     async def undo_apartment_scene(self, scene: int) -> None:
-        """Undo an apartment-wide scene."""
-        await self.api.undo_scene(0, 0, scene)
+        """Undo an apartment-wide system scene (explicit scene number)."""
+        await self.api.apartment_undo_scene(scene)
 
     def get_joker_devices_in_zone(self, zone_id: int) -> list[dict]:
         """Get all Joker (group 8) devices in a zone."""

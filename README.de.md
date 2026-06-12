@@ -40,6 +40,7 @@ Im Gegensatz zu herkömmlichen Integrationen, die jedes Gerät einzeln abfragen,
 - **Geräte-Leistungsmessung (W)** — SW-KL200, SW-ZWS200, SW-SSL200 und SW-UMR200 liefern die aktuelle Leistung (W) _(kumulierte Energie in Wh ist Pro)_
 - **Leistungsüberwachung auf Wohnungsebene** — Gesamtverbrauch (W)
 - **Alarm-Binärsensoren** — Feuer/Brand, Alarm 1/2/4, Panik und Türklingel als Binärsensoren unter dem Digital-Strom-Server-Gerät, mit Live-Updates aus dSS-Alarmereignissen
+- **Systemszenen auslösen** — Panik, Feuer/Brand, Alarm 1-4 und Türklingel wohnungsweit aus HA als Schalter auslösen
 - **Eventgesteuert** — sofortige Status-Updates bei Betätigung eines Wandschalters
 - **Szenen für alle Gruppen** — Licht-, Beschattungs- und Heizungsszenen
 
@@ -57,7 +58,6 @@ Erweiterte Funktionen mit einem Pro-Lizenzschlüssel von [wooniot.nl/pro](https:
 - **Außenwettersensoren** — Temperatur, Feuchtigkeit, Helligkeit, Windgeschwindigkeit, Windböen, Luftdruck
 - **Regenerkennung** — Echtzeit-Regensensor über dSS-System-Protection-Ereignisse
 - **Wetterschutz-Sensoren** — Wind-/Regenschutz-Szenenzustände als Binärsensoren
-- **Alarm-Steuerschalter** — Alarm 1–4 und Panik aus HA setzen/löschen (die Alarm-Binärsensoren bleiben kostenlos)
 - **Geräteidentifikation** — Gerät blinken lassen zur Identifikation
 - **Szenen speichern** — aktuelle Ausgabewerte als neue Szene speichern
 - **Bereichsszenen** — voller Szenenbereich (6-9, 10-14, 20-24, 30-34, 40-44) plus alle benutzerdefinierten Szenen aus dem dSS
@@ -145,7 +145,6 @@ Weitere Pro-Entitäten (Lizenz erforderlich):
 - `sensor.<zone>_<gerät>_energy` — Geräte-Energie (Wh) — Geräte-Leistung (W) bleibt kostenlos
 - `sensor.dss_outdoor_*` — Außenwettersensoren
 - `binary_sensor.dss_rain` — Regenerkennung
-- `switch.dss_alarm_*` — Alarm-1–4-/Panik-Steuerschalter (die Alarm-Binärsensoren bleiben kostenlos)
 
 ## Dienste
 

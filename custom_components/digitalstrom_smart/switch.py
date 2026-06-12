@@ -42,12 +42,11 @@ async def async_setup_entry(
                 DigitalStromJokerSwitch(coordinator, zone_id, zone_info, dev)
             )
 
-    # --- PRO: Apartment alarm switches ---
-    if coordinator.pro_enabled:
-        for scene_nr, name in APARTMENT_ALARM_SCENES.items():
-            entities.append(
-                DigitalStromAlarmSwitch(coordinator, scene_nr, name)
-            )
+    # --- FREE: Apartment system switches — trigger Panic, Fire/Brand, Alarm 1-4, Doorbell ---
+    for scene_nr, name in APARTMENT_ALARM_SCENES.items():
+        entities.append(
+            DigitalStromAlarmSwitch(coordinator, scene_nr, name)
+        )
 
     # Configurator timers are exposed as run-once buttons (see button.py)
     # rather than as switches: enabling/disabling klokken stays in the dSS.
@@ -56,7 +55,7 @@ async def async_setup_entry(
 
 
 class DigitalStromAlarmSwitch(CoordinatorEntity, SwitchEntity):
-    """Apartment alarm switch: Alarm 1-4, Panic. PRO."""
+    """Apartment system switch: trigger Panic, Fire/Brand, Alarm 1-4, Doorbell. Free."""
 
     _attr_has_entity_name = True
 

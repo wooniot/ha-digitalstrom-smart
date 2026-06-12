@@ -40,6 +40,7 @@ Unlike traditional per-device polling integrations, Digital Strom Smart uses the
 - **Per-device power measurement (W)** — SW-KL200, SW-ZWS200, SW-SSL200, and SW-UMR200 report real-time power (W), available immediately after HA restart, not just after the first event _(cumulative energy in Wh is Pro)_
 - **Apartment power monitoring** — apartment-level power consumption (W)
 - **Alarm binary sensors** — Fire/Brand, Alarm 1/2/4, Panic, and Doorbell appear as binary sensors under the Digital Strom Server device, with live updates from dSS alarm events
+- **System scene triggers** — raise Panic, Fire/Brand, Alarm 1-4 and Doorbell apartment-wide from HA as switches
 - **Event-driven** — instant state updates when someone uses a wall switch
 - **Scenes for all groups** — Light, Shade, and Heating scenes
 
@@ -57,7 +58,6 @@ Unlock advanced features with a Pro license key from [wooniot.nl/pro](https://wo
 - **Outdoor weather sensors** — temperature, humidity, brightness, wind speed, wind gust, air pressure
 - **Rain detection** — real-time rain sensor via dSS system-protection state events
 - **Weather protection sensors** — wind/rain protection scene states as binary sensors
-- **Alarm control switches** — set/clear Alarm 1–4 and Panic from HA (the alarm *binary sensors* stay free)
 - **Device identification** — blink any device for identification
 - **Save scenes** — save current output values as a new scene
 - **Area scenes** — full scene range support (6-9, 10-14, 20-24, 30-34, 40-44) plus all user-defined scenes from dSS
@@ -137,6 +137,7 @@ Alarm sensors (Digital Strom Server device) — **Free**:
 - `binary_sensor.dss_alarm_1` / `alarm_2` / `alarm_4` — Alarm scenes 1, 2, 4
 - `binary_sensor.dss_panic` — Panic alarm
 - `binary_sensor.dss_doorbell` — Doorbell active state
+- `switch.dss_alarm_*` — Trigger Panic / Fire / Alarm 1-4 / Doorbell apartment-wide
 
 Per-circuit (dSM meters) — **Pro**:
 - `sensor.<circuit_name>_power` — Instantaneous power per dSM meter (W)
@@ -154,7 +155,6 @@ Other Pro entities (requires license):
 - `sensor.dss_outdoor_*` — Outdoor weather sensors
 - `binary_sensor.dss_rain` — Rain detection
 - `binary_sensor.dss_*_protection` — Wind/rain weather-protection scene states
-- `switch.dss_alarm_*` — Alarm 1–4 / Panic control switches (the alarm binary sensors stay free)
 
 ## Services
 

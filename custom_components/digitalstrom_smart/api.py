@@ -407,6 +407,22 @@ class DigitalStromApi:
             {"id": zone_id, "groupID": group, "sceneNumber": scene_number},
         )
 
+    # Apartment-wide system scenes (Panic, Fire/Brand, Alarm 1-4, Presence) are raised
+    # via the apartment endpoint so they fan out across ALL zones. zone/callScene id=0
+    # only hits the broadcast group on zone 0 — Panic happens to work that way, but the
+    # Alarm/Fire scenes don't propagate. Always pass an explicit sceneNumber.
+    async def apartment_call_scene(self, scene_number: int, group: int = 0) -> None:
+        await self._request(
+            "/json/apartment/callScene",
+            {"sceneNumber": scene_number, "groupID": group},
+        )
+
+    async def apartment_undo_scene(self, scene_number: int, group: int = 0) -> None:
+        await self._request(
+            "/json/apartment/undoScene",
+            {"sceneNumber": scene_number, "groupID": group},
+        )
+
     async def turn_on(self, zone_id: int, group: int = 1) -> None:
         await self._request(
             "/json/zone/turnOn",
