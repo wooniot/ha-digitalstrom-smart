@@ -68,13 +68,23 @@ class DigitalStromSmartConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             errors=errors,
         )
 
-    async def _fetch_dss_id(self, host: str, port: int) -> str | None:
-        """Connect (unauthenticated) and return the dSS MachineID, or None.
+    async def _fetch_dss_id(
+        self, host: str, port: int, app_token: str | None = None
+    ) -> str | None:
+        """Return the dSS identifier (used to keep the Pro license bound across IP changes).
 
-        Used to identify a dSS by its stable machine id so the Pro license — which is
-        bound to the machine id, not the IP — survives an IP change."""
-        api = DigitalStromApi(host=host, port=port)
+        The dSS only returns its dSUID to an AUTHENTICATED session; without a token the
+        same call yields the MachineID instead — a different value. Reading it
+        unauthenticated here while the original install read it authenticated would change
+        the stored id and break the license binding. So when we have the entry's token we
+        authenticate first, keeping the id identical to the original install."""
+        api = DigitalStromApi(host=host, port=port, app_token=app_token)
         try:
+            if app_token:
+                try:
+                    await api.connect()
+                except DigitalStromApiError:
+                    pass  # fall back to an unauthenticated read
             version = await api.get_version()
         except DigitalStromApiError:
             return None
@@ -92,6 +102,12 @@ class DigitalStromSmartConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         # Already configured → just refresh the stored IP/port and stop. The existing
         # entry (and its Pro license) is kept; the integration reconnects on the new IP.
         self._abort_if_unique_id_configured(updates={CONF_HOST: host, CONF_PORT: 8080})
+        # The DHCP probe is unauthenticated, so its id is the MachineID — which won't match
+        # an entry stored under the (authenticated) dSUID. If any dSS is already configured,
+        # treat this as that same machine rather than offering it as NEW: adding a second
+        # entry under a different id would break the existing Pro license binding.
+        if self._async_current_entries():
+            return self.async_abort(reason="already_configured")
         # New dSS → offer to add it (host is pre-filled, only token approval remains).
         self._data = {CONF_CONNECTION_TYPE: CONN_LOCAL, CONF_HOST: host, CONF_PORT: 8080}
         self._api = DigitalStromApi(host=host, port=8080)
@@ -119,7 +135,10 @@ class DigitalStromSmartConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             host = user_input[CONF_HOST]
             port = user_input[CONF_PORT]
-            dss_id = await self._fetch_dss_id(host, port)
+            # Authenticate with the entry's existing token so we read the same id
+            # (dSUID) the original install stored — otherwise an unauthenticated read
+            # returns the MachineID and is wrongly rejected as a different device.
+            dss_id = await self._fetch_dss_id(host, port, entry.data.get(CONF_APP_TOKEN))
             if not dss_id:
                 errors["base"] = "cannot_connect"
             elif entry.unique_id and dss_id != entry.unique_id:
