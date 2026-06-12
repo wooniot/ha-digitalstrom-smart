@@ -144,6 +144,21 @@ APARTMENT_SYSTEM_STATES = {
     "alarm4": {"name": "Alarm 4", "tkey": "alarm_4_active",  "device_class": "safety",   "icon": "mdi:alarm-light",     "bin_uid": "alarm_77"},
 }
 
+# User-triggerable system alarm scenes (Fire/Brand + Alarm 1-4). Per dS hoofd-
+# ontwikkeling: "fire is a scene call, scene calls work via api" — dus deze worden
+# afgevuurd met /json/apartment/callScene (NIET /json/state/set, dat wordt geweigerd).
+# Naast de READ-ONLY status-binary_sensor (APARTMENT_SYSTEM_STATES) krijgt elk hiervan
+# ook een SWITCH om te activeren. is_on leest de ECHTE /usr/states-waarde terug (key =
+# state-id), dus negeert de dSS een scene → de switch klapt meteen terug naar uit: eerlijke
+# feedback. scene = apartment-scene-nummer; tkey = bestaande switch-vertaalsleutel.
+APARTMENT_TRIGGER_SCENES = {
+    "fire":   {"scene": SCENE_FIRE,    "tkey": "fire",    "icon": "mdi:fire"},
+    "alarm":  {"scene": SCENE_ALARM_1, "tkey": "alarm_1", "icon": "mdi:alarm-light"},
+    "alarm2": {"scene": SCENE_ALARM_2, "tkey": "alarm_2", "icon": "mdi:alarm-light-outline"},
+    "alarm3": {"scene": SCENE_ALARM_3, "tkey": "alarm_3", "icon": "mdi:alarm-light"},
+    "alarm4": {"scene": SCENE_ALARM_4, "tkey": "alarm_4", "icon": "mdi:alert"},
+}
+
 # Environment states from /usr/states (solar computer / presence simulator). FREE,
 # read-only binary sensors. Values are bool (day/night, daylight, twilight) or a
 # string ("on"/"off" for holiday) — normalised in coordinator._norm_state().

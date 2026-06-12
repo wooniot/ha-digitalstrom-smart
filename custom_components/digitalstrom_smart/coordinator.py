@@ -1063,6 +1063,12 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
         self._apartment_states[name] = active
         self.async_update_listeners()
 
+    def set_apartment_state_local(self, name: str, active: bool) -> None:
+        """Optimistically flag a system state locally WITHOUT writing to the dSS
+        (used after a callScene trigger). The real value is corrected on the next
+        /usr/states fetch — so if the dSS ignored the scene, is_on flips back to off."""
+        self._apartment_states[name] = active
+
     @staticmethod
     def _norm_state(value) -> bool:
         """Normalise a /usr/states value to active=True. Handles dSS int (1=active,

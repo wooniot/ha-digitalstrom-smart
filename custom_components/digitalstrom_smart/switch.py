@@ -10,7 +10,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .api import DigitalStromApiError
-from .const import DOMAIN, MANUFACTURER, GROUP_JOKER, CONF_ENABLED_ZONES, APARTMENT_ALARM_SCENES, ALARM_TRANSLATION_KEYS, SCENE_DOOR_BELL
+from .const import DOMAIN, MANUFACTURER, GROUP_JOKER, CONF_ENABLED_ZONES, APARTMENT_ALARM_SCENES, ALARM_TRANSLATION_KEYS, SCENE_DOOR_BELL, APARTMENT_TRIGGER_SCENES
 from .coordinator import DigitalStromCoordinator
 
 _LOGGER = logging.getLogger(__name__)
@@ -49,6 +49,15 @@ async def async_setup_entry(
     for scene_nr, name in APARTMENT_ALARM_SCENES.items():
         entities.append(
             DigitalStromAlarmSwitch(coordinator, scene_nr, name)
+        )
+
+    # --- FREE: System alarm trigger switches — Fire/Brand + Alarm 1-4 ---
+    # dS head dev confirmed these are scene calls (/json/apartment/callScene), so unlike
+    # the read-only state binary_sensors they DO get a switch. is_on mirrors the real
+    # /usr/states value (see DigitalStromSystemTriggerSwitch).
+    for state_id, cfg in APARTMENT_TRIGGER_SCENES.items():
+        entities.append(
+            DigitalStromSystemTriggerSwitch(coordinator, state_id, cfg)
         )
 
     # Configurator timers are exposed as run-once buttons (see button.py)
@@ -108,6 +117,51 @@ class DigitalStromAlarmSwitch(CoordinatorEntity, SwitchEntity):
     async def async_turn_off(self, **kwargs) -> None:
         await self.coordinator.undo_apartment_scene(self._scene_nr)
         self.coordinator.apartment_alarms.discard(self._scene_nr)
+        self.async_write_ha_state()
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        self.async_write_ha_state()
+
+
+class DigitalStromSystemTriggerSwitch(CoordinatorEntity, SwitchEntity):
+    """Trigger a dSS system alarm scene (Fire/Brand + Alarm 1-4) via callScene. Free.
+
+    Distinct from the read-only status binary_sensor: this ACTIVATES the scene
+    (/json/apartment/callScene, per dS head dev). is_on reads the real /usr/states
+    value back, so if the dSS ignores the scene the switch returns to off by itself."""
+
+    _attr_has_entity_name = True
+
+    def __init__(
+        self, coordinator: DigitalStromCoordinator, state_id: str, cfg: dict,
+    ) -> None:
+        super().__init__(coordinator)
+        self._state_id = state_id
+        self._scene = cfg["scene"]
+        dss_id = coordinator.dss_id
+        self._attr_unique_id = f"ds_{dss_id}_apartment_trigger_{state_id}"
+        self._attr_translation_key = cfg["tkey"]
+        self._attr_icon = cfg["icon"]
+        self._attr_device_info = {
+            "identifiers": {(DOMAIN, f"{dss_id}_apartment")},
+            "name": "Digital Strom Server",
+            "manufacturer": MANUFACTURER,
+            "model": "dSS",
+        }
+
+    @property
+    def is_on(self) -> bool:
+        return self.coordinator.is_apartment_state_active(self._state_id)
+
+    async def async_turn_on(self, **kwargs) -> None:
+        await self.coordinator.call_apartment_scene(self._scene)
+        self.coordinator.set_apartment_state_local(self._state_id, True)
+        self.async_write_ha_state()
+
+    async def async_turn_off(self, **kwargs) -> None:
+        await self.coordinator.undo_apartment_scene(self._scene)
+        self.coordinator.set_apartment_state_local(self._state_id, False)
         self.async_write_ha_state()
 
     @callback
