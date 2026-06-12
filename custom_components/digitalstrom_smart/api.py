@@ -652,6 +652,15 @@ class DigitalStromApi:
             {"dsuid": dsuid, "sensorIndex": sensor_index},
         )
 
+    async def get_device_sensor_by_type(self, dsuid: str, sensor_type: int) -> dict:
+        """Live device sensor value by TYPE (getSensorValue2). type 4=power(W), 5=energy(Wh).
+
+        getDevices only returns a stale cache; this forces a fresh read for real-time power."""
+        return await self._request(
+            "/json/device/getSensorValue2",
+            {"dsuid": dsuid, "sensorType": sensor_type},
+        )
+
     async def device_turn_on(self, dsuid: str) -> None:
         """Turn on a single device by dSUID."""
         await self._request(

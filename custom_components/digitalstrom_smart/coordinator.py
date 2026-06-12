@@ -335,14 +335,8 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
             _LOGGER.debug("Device poll failed: %s", err)
             return
 
-        # SW-series power (W) + energy (Wh) are refreshed from this SAME getDevices
-        # payload — no extra dSS calls (the per-device getSensorValue2 flood that
-        # overloaded the dSS in v3.3.18-21 is gone). Throttled to once per 30s; the
-        # binary poll itself runs every 5s, so we skip the power refresh in between.
-        now = self.hass.loop.time()
-        do_power = (now - self._last_power_poll) >= POLL_INTERVAL_ENERGY
-        if do_power:
-            self._last_power_poll = now
+        # NB: per-device power/energy is NOT read here — getDevices only returns a stale
+        # cache (often 0 W). Live values come from _power_poll_loop (getSensorValue2).
 
         # Parse binary inputs (1=active, 2=inactive)
         all_states: dict[str, int] = {}
@@ -350,16 +344,6 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
             dsuid = dev.get("dSUID", "")
             if not dsuid:
                 continue
-            if do_power:
-                for s in dev.get("sensors", []):
-                    st = s.get("type")
-                    if st in (SENSOR_ACTIVE_POWER, SENSOR_ACTIVE_ENERGY):
-                        v = s.get("value")
-                        if v is not None:
-                            try:
-                                self._device_sensor_values.setdefault(dsuid, {})[st] = round(float(v), 2)
-                            except (TypeError, ValueError):
-                                pass
             bi = dev.get("binaryInputs", [])
             if bi and "state" in bi[0]:
                 all_states[dsuid] = bi[0]["state"]
@@ -708,33 +692,80 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
         _LOGGER.debug("Per-device power poll skipped (disabled in v3.3.22)")
 
     async def _power_poll_loop(self) -> None:
-        """Background poll loop — UITGESCHAKELD (v3.3.22).
+        """Live per-device power (W) every 30s, energy (Wh) every 5 min, via getSensorValue2.
 
-        Zie _poll_device_power_sensors voor toelichting.
-        """
-        return
+        Only metering devices (a type-4 power sensor) are polled, with limited concurrency
+        (semaphore) — this avoids the all-devices parallel flood that overloaded the dSS in
+        earlier versions. getDevices only returns a STALE cache (often 0 W) so a live read
+        is required for real-time power on SW-KL / GE-KM components."""
+        metering = [
+            dsuid for dsuid, dev in self.devices.items()
+            if any(s.get("type") in (SENSOR_ACTIVE_POWER, SENSOR_ACTIVE_ENERGY)
+                   for s in dev.get("sensors", []))
+        ]
+        if not metering:
+            _LOGGER.info("Power poll: no metering devices found")
+            return
+        _LOGGER.info(
+            "Power poll loop STARTED: %d metering devices (power %ds / energy 5min)",
+            len(metering), POLL_INTERVAL_ENERGY,
+        )
+        sem = asyncio.Semaphore(4)  # gentle: at most 4 concurrent reads
+        cycle = 0
+        while True:
+            try:
+                await asyncio.sleep(POLL_INTERVAL_ENERGY)  # 30s
+                do_energy = (cycle % 10 == 0)  # energy ~every 5 minutes
+                types = (
+                    (SENSOR_ACTIVE_POWER, SENSOR_ACTIVE_ENERGY)
+                    if do_energy else (SENSOR_ACTIVE_POWER,)
+                )
+
+                async def _poll(dsuid, _types=types):
+                    async with sem:
+                        for stype in _types:
+                            try:
+                                r = await self.api.get_device_sensor_by_type(dsuid, stype)
+                                v = r.get("value") if isinstance(r, dict) else None
+                                if v is not None:
+                                    self._device_sensor_values.setdefault(dsuid, {})[stype] = round(float(v), 2)
+                            except Exception:
+                                pass  # device may not support this sensor type → skip
+
+                await asyncio.gather(*(_poll(d) for d in metering))
+                self.async_update_listeners()
+                cycle += 1
+            except asyncio.CancelledError:
+                _LOGGER.info("Power poll loop STOPPED")
+                return
+            except Exception as err:
+                _LOGGER.debug("Power poll cycle error: %s", err)
 
     async def fetch_device_power_sensors(self) -> None:
-        """Startup seeding via getSensorValue2 — UITGESCHAKELD (v3.3.22).
+        """Startup seed: one LIVE getSensorValue2 round for metering devices so power +
+        energy show immediately (not only after the first 30s poll). Gentle (semaphore)."""
+        metering = [
+            dsuid for dsuid, dev in self.devices.items()
+            if any(s.get("type") in (SENSOR_ACTIVE_POWER, SENSOR_ACTIVE_ENERGY)
+                   for s in dev.get("sensors", []))
+        ]
+        if not metering:
+            return
+        sem = asyncio.Semaphore(4)
 
-        Seed initiële waarden nu alleen uit structure data (geen API-calls).
-        Verdere updates via deviceSensorValue events.
-        """
-        seeded = 0
-        for dsuid, dev in self.devices.items():
-            for sensor in dev.get("sensors", []):
-                stype = sensor.get("type")
-                if stype not in (SENSOR_ACTIVE_POWER, SENSOR_ACTIVE_ENERGY):
-                    continue
-                val = sensor.get("value")
-                if val is not None:
+        async def _seed(dsuid):
+            async with sem:
+                for stype in (SENSOR_ACTIVE_POWER, SENSOR_ACTIVE_ENERGY):
                     try:
-                        self._device_sensor_values.setdefault(dsuid, {})[stype] = round(float(val), 2)
-                        seeded += 1
-                    except (TypeError, ValueError):
+                        r = await self.api.get_device_sensor_by_type(dsuid, stype)
+                        v = r.get("value") if isinstance(r, dict) else None
+                        if v is not None:
+                            self._device_sensor_values.setdefault(dsuid, {})[stype] = round(float(v), 2)
+                    except Exception:
                         pass
 
-        _LOGGER.debug("Startup power seed: %d devices from structure (no API calls)", seeded)
+        await asyncio.gather(*(_seed(d) for d in metering))
+        _LOGGER.debug("Startup power seed (live): %d metering devices", len(metering))
 
     def _find_device_with_sensor(self, zone_info: dict, sensor_type: int) -> str | None:
         """Find the first device in a zone that has a given sensor type."""
