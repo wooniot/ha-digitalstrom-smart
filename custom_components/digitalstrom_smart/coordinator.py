@@ -500,13 +500,15 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
                     " | ".join(f"{c.get('name','?')} [hw={c.get('hwName','?')}] dsuid={(c.get('dSUID','') or '')[:18]}"
                                for c in all_circuits),
                 )
-                # NIEUWE-generatie dSM-meters meten (dSM20/dSM25). Oude dSM11/dSM12 worden
-                # niet gemeten (verzoek 12 jun). Mocht een dSM20 zich anders melden dan
-                # 'dSM20', dan zien we dat in de bovenstaande regel en passen we de filter aan.
+                # dSM20/dSM25 meten. dSM11 is EOL -> overslaan. dSM12 is wel ondersteund en
+                # levert via metering/getLatest geldige W en Wh (geverifieerd op een
+                # dSM12-only installatie) -> niet langer uitgesloten. De dSM-energie-corruptie
+                # die hier eerder speelde kwam van getSensorValue2-bus-starvation, die nu
+                # apart is opgelost (per-device power = events-only); dSM12-metering is veilig.
                 self._circuits = [
                     c for c in all_circuits
                     if c.get("hwName", "").startswith("dSM")
-                    and not c.get("hwName", "").startswith(("dSM11", "dSM12"))
+                    and not c.get("hwName", "").startswith("dSM11")
                 ]
                 _LOGGER.info(
                     "Gemeten dSM-meters (na filter): %d — %s",
