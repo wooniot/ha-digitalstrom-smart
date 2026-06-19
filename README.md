@@ -148,6 +148,8 @@ Per-circuit (dSM meters) — **Pro**:
 - `sensor.<circuit_name>_energy` — Cumulative lifetime energy per dSM (kWh, `total_increasing`)
 - `sensor.dss_energy_consumption` — Apartment-wide kWh, sum of all dSMs (Energy Dashboard ready)
 
+> **Supported dSM meters:** dSM12, dSM20 and dSM25 are metered (power **and** energy). The end-of-life dSM11 is excluded, as it provides no reliable metering.
+
 User Defined Actions & States (apartment) — **Pro**:
 - `button.<action_name>` — One button per action defined in the dSS Configurator
 - `sensor.<state_name>` / `binary_sensor.<state_name>` — One entity per custom/apartment state, with live updates from dSS events
@@ -231,6 +233,10 @@ Digital Strom Smart supports multiple languages for all entity names, configurat
 Home Assistant automatically uses the correct language based on your system language setting. Want to add a translation? PRs welcome — just create a new JSON file in `custom_components/digitalstrom_smart/translations/`.
 
 ## Changelog
+
+### v4.0.2 (2026-06-19) — dSM12 metering support
+
+- **dSM12 included in circuit metering** — dSM12 meters now report power (W) and lifetime energy (Wh), just like dSM20/dSM25. Only the end-of-life dSM11 is skipped. Earlier builds excluded dSM12; this is verified on a dSM12-only installation. The energy corruption that previously affected metering came from `getSensorValue2` bus starvation, which is fixed separately (per-device power is events-only), so dSM12 metering is safe.
 
 ### v4.0.0 (2026-06-12) — System scenes, robust metering & environment states
 

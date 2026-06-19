@@ -146,6 +146,8 @@ Pro Stromkreis (dSM-Zähler) — **Pro**:
 - `sensor.<circuit_name>_energy` — Kumulierte Energie pro dSM (kWh, `total_increasing`)
 - `sensor.dss_energy_consumption` — Wohnungsweite kWh, Summe aller dSMs (Energie-Dashboard)
 
+> **Unterstützte dSM-Zähler:** dSM12, dSM20 und dSM25 werden gemessen (Leistung **und** Energie). Der End-of-Life-dSM11 wird ausgeschlossen, da er keine zuverlässige Messung liefert.
+
 Benutzerdefinierte Aktionen & Zustände (Wohnung) — **Pro**:
 - `button.<aktionsname>` — Ein Button pro im dSS Konfigurator definierter Aktion
 - `sensor.<zustandsname>` / `binary_sensor.<zustandsname>` — Eine Entität pro eigenem/wohnungsweitem Zustand
@@ -223,6 +225,10 @@ Digital Strom Smart unterstützt mehrere Sprachen für alle Entitätsnamen, Konf
 Home Assistant verwendet automatisch die richtige Sprache basierend auf Ihrer Systemspracheinstellung. Möchten Sie eine Übersetzung hinzufügen? PRs willkommen — erstellen Sie einfach eine neue JSON-Datei in `custom_components/digitalstrom_smart/translations/`.
 
 ## Änderungsprotokoll
+
+### v4.0.2 (19.06.2026) — dSM12-Messung unterstützt
+
+- **dSM12 in die Stromkreis-Messung aufgenommen** — dSM12-Zähler liefern jetzt Leistung (W) und kumulierte Energie (Wh), genau wie dSM20/dSM25. Nur der End-of-Life-dSM11 wird übersprungen. Frühere Versionen schlossen dSM12 aus; dies wurde auf einer reinen dSM12-Installation verifiziert. Die zuvor auftretende Energie-Verfälschung kam von `getSensorValue2`-Bus-Starvation, die separat behoben ist (Geräte-Leistung ist event-only), sodass die dSM12-Messung sicher ist.
 
 ### v4.0.0 (12.06.2026) — Systemszenen, robuste Messung & Umgebungszustände
 

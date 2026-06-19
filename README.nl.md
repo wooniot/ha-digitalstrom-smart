@@ -148,6 +148,8 @@ Per stroomkring (dSM-meters) — **Pro**:
 - `sensor.<circuit_name>_energy` — Cumulatieve energie per dSM (kWh, `total_increasing`)
 - `sensor.dss_energy_consumption` — Woningbrede kWh, som van alle dSM's (Energie-dashboard)
 
+> **Ondersteunde dSM-meters:** dSM12, dSM20 en dSM25 worden gemeten (vermogen **én** energie). De end-of-life dSM11 wordt uitgesloten, omdat die geen betrouwbare meting levert.
+
 Gebruikersgedefinieerde acties & statussen (woning) — **Pro**:
 - `button.<actienaam>` — Eén knop per actie uit de dSS Configurator
 - `sensor.<statusnaam>` / `binary_sensor.<statusnaam>` — Eén entiteit per eigen/woningstatus, met live updates uit dSS-gebeurtenissen
@@ -231,6 +233,10 @@ Digital Strom Smart ondersteunt meerdere talen voor alle entiteitsnamen, configu
 Home Assistant gebruikt automatisch de juiste taal op basis van je systeemtaal. Een vertaling toevoegen? PR's zijn welkom — maak een nieuw JSON-bestand aan in `custom_components/digitalstrom_smart/translations/`.
 
 ## Wijzigingslog
+
+### v4.0.2 (19-06-2026) — dSM12-bemetering ondersteund
+
+- **dSM12 meegenomen in stroomkring-metering** — dSM12-meters leveren nu vermogen (W) en cumulatieve energie (Wh), net als dSM20/dSM25. Alleen de end-of-life dSM11 wordt overgeslagen. Eerdere versies sloten dSM12 uit; dit is geverifieerd op een dSM12-only installatie. De energie-corruptie die eerder speelde kwam van `getSensorValue2`-bus-starvation, die apart is opgelost (vermogen per apparaat is event-only), dus dSM12-metering is veilig.
 
 ### v4.0.0 (12-06-2026) — Systeemscenes, robuuste metering & omgevingsstatussen
 
