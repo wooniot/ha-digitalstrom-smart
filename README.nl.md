@@ -244,6 +244,14 @@ Home Assistant gebruikt automatisch de juiste taal op basis van je systeemtaal. 
 
 ## Wijzigingslog
 
+### v4.1.0 (23-06-2026) — Bestendig tegen firmware-updates
+
+- **Automatische herauthenticatie** — wordt het dSS app-token ongeldig (gebruikelijk na een dSS firmware-update), dan toont Home Assistant nu een melding *"Herauthenticatie vereist"* in plaats van stil te falen bij setup. Een nieuw token goedkeuren behoudt de entry, Pro-licentie én alle entiteiten — opnieuw koppelen is niet nodig.
+- **Verbindingsfouten worden opnieuw geprobeerd** — een tijdelijke verbindingsfout geeft nu `ConfigEntryNotReady` (HA probeert automatisch opnieuw) in plaats van permanent te falen.
+- **Periodieke Pro-licentie-hercheck** — de licentie wordt elke 6 uur opnieuw gevalideerd, zodat een server-side herbinding (na een firmware-id-flip) wordt opgepikt zonder HA-herstart; een Free⇄Pro-wijziging herlaadt de entry automatisch.
+- **Repair-melding "Pro-licentie inactief"** — is een Pro-key ingesteld maar valideert deze niet meer, dan verschijnt een duidelijke melding (verdwijnt zodra weer geldig), zodat verdwenen Pro-functies niet langer stil zijn.
+- **README** — sectie "Na een dSS firmware-update (1.19.13)" toegevoegd met aandachtspunten (vast IP aanbevolen, reauth, server-side herbinding licentie).
+
 ### v4.0.2 (19-06-2026) — dSM12-bemetering ondersteund
 
 - **dSM12 meegenomen in stroomkring-metering** — dSM12-meters leveren nu vermogen (W) en cumulatieve energie (Wh), net als dSM20/dSM25. Alleen de end-of-life dSM11 wordt overgeslagen. Eerdere versies sloten dSM12 uit; dit is geverifieerd op een dSM12-only installatie. De energie-corruptie die eerder speelde kwam van `getSensorValue2`-bus-starvation, die apart is opgelost (vermogen per apparaat is event-only), dus dSM12-metering is veilig.

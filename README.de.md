@@ -236,6 +236,14 @@ Home Assistant verwendet automatisch die richtige Sprache basierend auf Ihrer Sy
 
 ## Änderungsprotokoll
 
+### v4.1.0 (23.06.2026) — Robust gegen Firmware-Updates
+
+- **Automatische erneute Authentifizierung** — wird das dSS-App-Token ungültig (häufig nach einem dSS-Firmware-Update), zeigt Home Assistant nun eine Meldung *"Erneute Authentifizierung erforderlich"*, statt die Einrichtung stillschweigend fehlschlagen zu lassen. Das Genehmigen eines neuen Tokens behält Eintrag, Pro-Lizenz und alle Entitäten — kein Löschen und erneutes Koppeln nötig.
+- **Verbindungsfehler werden erneut versucht** — ein vorübergehender Verbindungsfehler löst nun `ConfigEntryNotReady` aus (HA versucht es automatisch erneut), statt dauerhaft fehlzuschlagen.
+- **Periodische Pro-Lizenzprüfung** — die Lizenz wird alle 6 Stunden neu validiert, sodass eine serverseitige Neubindung (nach einem Firmware-ID-Wechsel) ohne HA-Neustart erkannt wird; eine Free⇄Pro-Änderung lädt den Eintrag automatisch neu.
+- **Reparatur-Hinweis "Pro-Lizenz inaktiv"** — ist ein Pro-Schlüssel konfiguriert, validiert aber nicht mehr, wird eine klare Meldung angezeigt (verschwindet, sobald wieder gültig), sodass verschwundene Pro-Funktionen nicht mehr stillschweigend sind.
+- **README** — Abschnitt "Nach einem dSS-Firmware-Update (1.19.13)" mit Hinweisen hinzugefügt (feste IP empfohlen, Reauth, serverseitige Lizenz-Neubindung).
+
 ### v4.0.2 (19.06.2026) — dSM12-Messung unterstützt
 
 - **dSM12 in die Stromkreis-Messung aufgenommen** — dSM12-Zähler liefern jetzt Leistung (W) und kumulierte Energie (Wh), genau wie dSM20/dSM25. Nur der End-of-Life-dSM11 wird übersprungen. Frühere Versionen schlossen dSM12 aus; dies wurde auf einer reinen dSM12-Installation verifiziert. Die zuvor auftretende Energie-Verfälschung kam von `getSensorValue2`-Bus-Starvation, die separat behoben ist (Geräte-Leistung ist event-only), sodass die dSM12-Messung sicher ist.

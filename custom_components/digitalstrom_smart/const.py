@@ -9,7 +9,7 @@ MANUFACTURER = "Digital Strom"
 INTEGRATION_AUTHOR = "Woon IoT BV"
 INTEGRATION_AUTHOR_ID = "MN-HJD-2026"
 INTEGRATION_URL = "https://github.com/wooniot/ha-digitalstrom-smart"
-INTEGRATION_VERSION = "2.10.10"
+INTEGRATION_VERSION = "4.1.0"
 
 # Application name shown in dSS Configurator under registered applications
 DSS_APP_NAME = "WoonIoT HA Connect"

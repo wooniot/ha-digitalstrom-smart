@@ -244,6 +244,14 @@ Home Assistant automatically uses the correct language based on your system lang
 
 ## Changelog
 
+### v4.1.0 (2026-06-23) — Firmware-update resilience
+
+- **Auto re-authentication** — when the dSS app token becomes invalid (common after a dSS firmware update), Home Assistant now shows a *"Re-authentication required"* notification instead of silently failing setup. Approving a new token keeps the entry, Pro license and all entities — no delete-and-re-pair needed.
+- **Connection errors are retried** — a temporary connection failure now raises `ConfigEntryNotReady` (HA retries automatically) instead of permanently failing.
+- **Periodic Pro license recheck** — the license is re-validated every 6 hours, so a server-side re-bind (after a firmware id-flip) is picked up without an HA restart; a Free⇄Pro change reloads the entry automatically.
+- **"Pro license inactive" repair issue** — if a Pro key is configured but no longer validates, a clear repair notification is shown (cleared once valid again), so vanished Pro features are no longer silent.
+- **README** — added a "After a dSS firmware update (1.19.13)" section with attention points (static IP recommended, reauth, server-side license re-bind).
+
 ### v4.0.2 (2026-06-19) — dSM12 metering support
 
 - **dSM12 included in circuit metering** — dSM12 meters now report power (W) and lifetime energy (Wh), just like dSM20/dSM25. Only the end-of-life dSM11 is skipped. Earlier builds excluded dSM12; this is verified on a dSM12-only installation. The energy corruption that previously affected metering came from `getSensorValue2` bus starvation, which is fixed separately (per-device power is events-only), so dSM12 metering is safe.
