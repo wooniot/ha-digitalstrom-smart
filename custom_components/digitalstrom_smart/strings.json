@@ -409,5 +409,11 @@
         "name": "Shade Area 4 Scene 4"
       }
     }
+  },
+  "issues": {
+    "pro_license_invalid": {
+      "title": "Digital Strom Pro license inactive",
+      "description": "A Pro license key is configured but is not currently valid, so Pro features (climate, outdoor sensors, blink) are disabled. This can happen after a dSS firmware update changed the internal dSS id and unbound the license. It is normally re-bound automatically within a few hours. If it stays inactive, contact info@wooniot.nl."
+    }
   }
 }

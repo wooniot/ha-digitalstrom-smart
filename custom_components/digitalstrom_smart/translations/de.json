@@ -412,5 +412,11 @@
         "name": "Beschattung Bereich 4 Szene 4"
       }
     }
+  },
+  "issues": {
+    "pro_license_invalid": {
+      "title": "Digital Strom Pro-Lizenz inaktiv",
+      "description": "Ein Pro-Lizenzschlüssel ist konfiguriert, aber derzeit nicht gültig, daher sind Pro-Funktionen (Klima, Außensensoren, Blinken) deaktiviert. Dies kann nach einem dSS-Firmware-Update auftreten, das die interne dSS-Kennung geändert und die Lizenz getrennt hat. Normalerweise wird sie innerhalb weniger Stunden automatisch neu gebunden. Bleibt sie inaktiv, wenden Sie sich an info@wooniot.nl."
+    }
   }
 }

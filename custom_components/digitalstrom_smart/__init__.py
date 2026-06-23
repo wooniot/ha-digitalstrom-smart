@@ -26,6 +26,7 @@ from .const import (
     CONF_PRO_LICENSE,
 )
 from .coordinator import DigitalStromCoordinator
+from .license import check_pro_license as _check_pro_license, sync_pro_issue
 
 # Pre-import all platform modules to avoid blocking imports in event loop (HA 2026+)
 from . import (  # noqa: F401
@@ -79,8 +80,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     dss_id = entry.data.get(CONF_DSS_ID, "")
     coordinator = DigitalStromCoordinator(hass, api, structure, dss_id=dss_id)
 
-    # Check Pro license
+    # Check Pro license. Store the key + entry id on the coordinator so it can
+    # re-validate periodically (picks up a server-side rebind without a restart).
     pro_key = entry.options.get(CONF_PRO_LICENSE, "")
+    coordinator.pro_license_key = pro_key
+    coordinator.entry_id = entry.entry_id
     if pro_key:
         license_result = await _check_pro_license(pro_key, dss_id)
         coordinator.pro_enabled = license_result["valid"]
@@ -95,6 +99,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             )
     else:
         coordinator.license_info = {"valid": False, "reason": "no_key", "type": None, "method": None}
+
+    # Surface a repair issue if a Pro key is set but no longer validates
+    # (e.g. license unbound after a firmware update). Cleared when valid.
+    sync_pro_issue(hass, entry.entry_id, bool(pro_key), coordinator.pro_enabled)
 
     # Initial data fetch
     await coordinator.async_config_entry_first_refresh()
@@ -230,62 +238,9 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     return unload_ok
 
 
-async def _check_pro_license(key: str, dss_id: str) -> dict:
-    """Validate Pro license key with WoonIoT server.
-
-    Returns dict with: valid, reason, type, method (online/offline).
-    """
-    if not key:
-        return {"valid": False, "reason": "no_key", "type": None, "method": None}
-    dss_short = dss_id[:8] if dss_id else ""
-    try:
-        from .const import PRO_LICENSE_URL
-        import aiohttp
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
-                PRO_LICENSE_URL,
-                json={"key": key, "dss_id": dss_short},
-                timeout=aiohttp.ClientTimeout(total=5),
-            ) as resp:
-                if resp.status == 200:
-                    data = await resp.json()
-                    return {
-                        "valid": data.get("valid", False),
-                        "reason": data.get("reason", "ok" if data.get("valid") else "unknown"),
-                        "type": data.get("type"),
-                        "method": "online",
-                        "dss_id_sent": dss_short,
-                    }
-    except Exception:
-        pass
-    # Offline fallback: verify HMAC signature of key
-    valid = _verify_key_offline(key)
-    return {
-        "valid": valid,
-        "reason": "ok" if valid else "invalid_signature",
-        "type": "offline",
-        "method": "offline",
-        "dss_id_sent": dss_short,
-    }
-
-
-def _verify_key_offline(key: str) -> bool:
-    """Verify license key HMAC signature for offline validation."""
-    import hashlib
-    import hmac as _hmac
-    parts = key.split("-")
-    if len(parts) != 4:
-        return False
-    prefix = parts[0]
-    if prefix not in ("PRO", "TRIAL"):
-        return False
-    body = f"{prefix}-{parts[1]}-{parts[2]}"
-    # Signing key (split to discourage casual extraction)
-    _k = "wooniot" + "-ds-" + "pro-2026" + "-secret" + "-key"
-    sig = _hmac.new(
-        _k.encode(), body.encode(), hashlib.sha256
-    ).hexdigest()[:4].upper()
-    return parts[3] == sig
+async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Clean up the Pro-license repair issue when the entry is removed."""
+    sync_pro_issue(hass, entry.entry_id, False, False)
 
 
 def _register_services(hass: HomeAssistant) -> None:

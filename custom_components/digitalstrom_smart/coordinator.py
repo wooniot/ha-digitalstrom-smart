@@ -14,6 +14,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .api import DigitalStromApi, DigitalStromApiError, DigitalStromAuthError
+from .license import check_pro_license, sync_pro_issue
 import aiohttp
 
 from .const import (
@@ -163,6 +164,11 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
         # Pro license status
         self.pro_enabled = False
         self.license_info: dict = {"valid": False, "reason": "no_key", "type": None, "method": None}
+        # Set by async_setup_entry; used for periodic re-validation (picks up a
+        # server-side license rebind without needing an HA restart).
+        self.pro_license_key: str = ""
+        self.entry_id: str | None = None
+        self._license_last_check: float = 0.0
 
     def _parse_structure(self, structure: dict) -> None:
         """Parse apartment structure into zone and device dicts."""
@@ -1583,10 +1589,41 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
             self._telemetry_last = now
             self.hass.async_create_task(self._send_telemetry())
 
+        # Periodically re-validate the Pro license (every 6h). Picks up a
+        # server-side rebind after a firmware-update id-flip without an HA
+        # restart, and keeps the "Pro inactive" repair issue in sync.
+        if self.pro_license_key and (now - self._license_last_check > 21600):
+            self._license_last_check = now
+            self.hass.async_create_task(self._recheck_license())
+
         return {
             "consumption": self._consumption,
             "temperatures": self._temperatures,
         }
+
+    async def _recheck_license(self) -> None:
+        """Re-validate the Pro license; reload the entry if Pro status changed.
+
+        A dSS firmware update can flip the dSS id and temporarily unbind the
+        license server-side. Once it is re-bound, this picks the change up
+        within ~6h instead of only on the next HA restart. Free<->Pro changes
+        the set of platforms, so a status flip triggers a config-entry reload.
+        """
+        try:
+            result = await check_pro_license(self.pro_license_key, self.dss_id)
+        except Exception as err:  # never let a recheck break the poll loop
+            _LOGGER.debug("License recheck failed (non-fatal): %s", err)
+            return
+        was_enabled = self.pro_enabled
+        self.license_info = result
+        sync_pro_issue(self.hass, self.entry_id, True, result["valid"])
+        if result["valid"] != was_enabled and self.entry_id:
+            _LOGGER.info(
+                "Pro license status changed (%s -> %s) — reloading entry",
+                was_enabled, result["valid"],
+            )
+            self.pro_enabled = result["valid"]
+            self.hass.config_entries.async_schedule_reload(self.entry_id)
 
     async def _send_telemetry(self) -> None:
         """Send anonymous ping to WoonIoT (best-effort, retry on fail)."""

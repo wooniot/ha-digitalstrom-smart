@@ -412,5 +412,11 @@
         "name": "Zonwering Zone 4 Scene 4"
       }
     }
+  },
+  "issues": {
+    "pro_license_invalid": {
+      "title": "Digital Strom Pro-licentie inactief",
+      "description": "Er is een Pro-licentiesleutel ingesteld maar deze is momenteel niet geldig, waardoor Pro-functies (klimaat, buitensensoren, knipperen) zijn uitgeschakeld. Dit kan gebeuren na een dSS firmware-update die de interne dSS-id wijzigde en de licentie losmaakte. Normaal wordt dit binnen enkele uren automatisch hersteld. Blijft het inactief, neem dan contact op via info@wooniot.nl."
+    }
   }
 }
