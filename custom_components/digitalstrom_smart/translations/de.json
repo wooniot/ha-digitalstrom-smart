@@ -24,6 +24,10 @@
           "host": "IP-Adresse",
           "port": "Port"
         }
+      },
+      "reauth_confirm": {
+        "title": "Digital Strom erneut authentifizieren",
+        "description": "Das App-Token für das dSS unter {host} ist nicht mehr gültig — das passiert häufig nach einem dSS-Firmware-Update.\n\n1. Öffnen Sie die dSS-Weboberfläche → **System → Zugriffsberechtigung**.\n2. Genehmigen Sie das neue Anwendungs-Token **{token}**.\n3. Klicken Sie unten auf **Senden**.\n\nIhre Einstellungen, Pro-Lizenz und Entitäten bleiben erhalten."
       }
     },
     "error": {
@@ -34,7 +38,8 @@
     "abort": {
       "cannot_connect": "Verbindung zum dSS nach der Authentifizierung nicht möglich.",
       "already_configured": "Dieser Digital Strom Server ist bereits konfiguriert.",
-      "reconfigure_successful": "Die dSS-Adresse wurde aktualisiert."
+      "reconfigure_successful": "Die dSS-Adresse wurde aktualisiert.",
+      "reauth_successful": "Erneute Authentifizierung erfolgreich — das neue Token wurde gespeichert."
     },
     "flow_title": "{host}"
   },
@@ -57,51 +62,125 @@
   },
   "entity": {
     "sensor": {
-      "ws_outdoor_temperature": { "name": "Außentemperatur" },
-      "sun_azimuth": { "name": "Sonnen-Azimut" },
-      "sun_elevation": { "name": "Sonnenhöhe" },
-      "power_consumption": { "name": "Stromverbrauch" },
-      "temperature": { "name": "Temperatur" },
-      "current_temperature": { "name": "Temperatur" },
-      "target_temperature": { "name": "Solltemperatur" },
-      "heating_output": { "name": "Heizleistung" },
-      "circuit_power": { "name": "Leistung" },
-      "circuit_energy": { "name": "Energie" },
-      "apartment_energy": { "name": "Energieverbrauch" },
-      "outdoor_temperature": { "name": "Außentemperatur" },
-      "outdoor_humidity": { "name": "Außenluftfeuchtigkeit" },
-      "outdoor_brightness": { "name": "Außenhelligkeit" },
-      "wind_speed": { "name": "Windgeschwindigkeit" },
-      "wind_gust": { "name": "Windböen" },
-      "air_pressure": { "name": "Luftdruck" },
-      "rain_intensity": { "name": "Regen" },
-      "device_temperature": { "name": "Temperatur" },
-      "device_humidity": { "name": "Luftfeuchtigkeit" },
-      "device_brightness": { "name": "Helligkeit" },
-      "device_co2": { "name": "CO2" },
-      "license_status": { "name": "Lizenzstatus" }
+      "ws_outdoor_temperature": {
+        "name": "Außentemperatur"
+      },
+      "sun_azimuth": {
+        "name": "Sonnen-Azimut"
+      },
+      "sun_elevation": {
+        "name": "Sonnenhöhe"
+      },
+      "power_consumption": {
+        "name": "Stromverbrauch"
+      },
+      "temperature": {
+        "name": "Temperatur"
+      },
+      "current_temperature": {
+        "name": "Temperatur"
+      },
+      "target_temperature": {
+        "name": "Solltemperatur"
+      },
+      "heating_output": {
+        "name": "Heizleistung"
+      },
+      "circuit_power": {
+        "name": "Leistung"
+      },
+      "circuit_energy": {
+        "name": "Energie"
+      },
+      "apartment_energy": {
+        "name": "Energieverbrauch"
+      },
+      "outdoor_temperature": {
+        "name": "Außentemperatur"
+      },
+      "outdoor_humidity": {
+        "name": "Außenluftfeuchtigkeit"
+      },
+      "outdoor_brightness": {
+        "name": "Außenhelligkeit"
+      },
+      "wind_speed": {
+        "name": "Windgeschwindigkeit"
+      },
+      "wind_gust": {
+        "name": "Windböen"
+      },
+      "air_pressure": {
+        "name": "Luftdruck"
+      },
+      "rain_intensity": {
+        "name": "Regen"
+      },
+      "device_temperature": {
+        "name": "Temperatur"
+      },
+      "device_humidity": {
+        "name": "Luftfeuchtigkeit"
+      },
+      "device_brightness": {
+        "name": "Helligkeit"
+      },
+      "device_co2": {
+        "name": "CO2"
+      },
+      "license_status": {
+        "name": "Lizenzstatus"
+      }
     },
     "light": {
-      "zone_light": { "name": "Licht" }
+      "zone_light": {
+        "name": "Licht"
+      }
     },
     "cover": {
-      "zone_cover": { "name": "Beschattung" }
+      "zone_cover": {
+        "name": "Beschattung"
+      }
     },
     "climate": {
-      "zone_climate": { "name": "Klima" }
+      "zone_climate": {
+        "name": "Klima"
+      }
     },
     "switch": {
-      "fire": { "name": "Brand" },
-      "rain_protection": { "name": "Regen" },
-      "frost": { "name": "Frost" },
-      "hail": { "name": "Hagel" },
-      "wind": { "name": "Wind" },
-      "alarm_1": { "name": "Alarm 1" },
-      "alarm_2": { "name": "Alarm 2" },
-      "alarm_3": { "name": "Alarm 3" },
-      "alarm_4": { "name": "Alarm 4" },
-      "panic": { "name": "Panik" },
-      "doorbell": { "name": "Türklingel" }
+      "fire": {
+        "name": "Brand"
+      },
+      "rain_protection": {
+        "name": "Regen"
+      },
+      "frost": {
+        "name": "Frost"
+      },
+      "hail": {
+        "name": "Hagel"
+      },
+      "wind": {
+        "name": "Wind"
+      },
+      "alarm_1": {
+        "name": "Alarm 1"
+      },
+      "alarm_2": {
+        "name": "Alarm 2"
+      },
+      "alarm_3": {
+        "name": "Alarm 3"
+      },
+      "alarm_4": {
+        "name": "Alarm 4"
+      },
+      "panic": {
+        "name": "Panik"
+      },
+      "doorbell": {
+        "name": "Türklingel"
+      }
     },
     "select": {
       "presence_mode": {
@@ -117,79 +196,221 @@
       }
     },
     "binary_sensor": {
-      "daynight": { "name": "Tag/Nacht" },
-      "twilight": { "name": "Dämmerung" },
-      "daylight": { "name": "Tageslicht" },
-      "holiday": { "name": "Urlaub" },
-      "malfunction": { "name": "Störung" },
-      "service": { "name": "Service erforderlich" },
-      "alarm_3_active": { "name": "Alarm 3" },
-      "frost": { "name": "Frost" },
-      "hail": { "name": "Hagel" },
-      "wind": { "name": "Wind" },
-      "rain": { "name": "Regen" },
-      "rain_protection": { "name": "Regenschutz" },
-      "fire": { "name": "Brand" },
-      "alarm_1_active": { "name": "Alarm 1" },
-      "alarm_2_active": { "name": "Alarm 2" },
-      "alarm_4_active": { "name": "Alarm 4" },
-      "panic_active": { "name": "Panik" },
-      "doorbell_active": { "name": "Türklingel" }
+      "daynight": {
+        "name": "Tag/Nacht"
+      },
+      "twilight": {
+        "name": "Dämmerung"
+      },
+      "daylight": {
+        "name": "Tageslicht"
+      },
+      "holiday": {
+        "name": "Urlaub"
+      },
+      "malfunction": {
+        "name": "Störung"
+      },
+      "service": {
+        "name": "Service erforderlich"
+      },
+      "alarm_3_active": {
+        "name": "Alarm 3"
+      },
+      "frost": {
+        "name": "Frost"
+      },
+      "hail": {
+        "name": "Hagel"
+      },
+      "wind": {
+        "name": "Wind"
+      },
+      "rain": {
+        "name": "Regen"
+      },
+      "rain_protection": {
+        "name": "Regenschutz"
+      },
+      "fire": {
+        "name": "Brand"
+      },
+      "alarm_1_active": {
+        "name": "Alarm 1"
+      },
+      "alarm_2_active": {
+        "name": "Alarm 2"
+      },
+      "alarm_4_active": {
+        "name": "Alarm 4"
+      },
+      "panic_active": {
+        "name": "Panik"
+      },
+      "doorbell_active": {
+        "name": "Türklingel"
+      }
     },
     "scene": {
-      "light_off": { "name": "Licht Aus" },
-      "light_scene_1": { "name": "Licht Szene 1" },
-      "light_scene_2": { "name": "Licht Szene 2" },
-      "light_scene_3": { "name": "Licht Szene 3" },
-      "light_scene_4": { "name": "Licht Szene 4" },
-      "shade_close": { "name": "Beschattung Schließen" },
-      "shade_open": { "name": "Beschattung Öffnen" },
-      "shade_preset_2": { "name": "Beschattung Preset 2" },
-      "shade_preset_3": { "name": "Beschattung Preset 3" },
-      "shade_preset_4": { "name": "Beschattung Preset 4" },
-      "heating_protection": { "name": "Heizung Frostschutz" },
-      "heating_comfort": { "name": "Heizung Komfort" },
-      "heating_economy": { "name": "Heizung Eco" },
-      "heating_night": { "name": "Heizung Nacht" },
-      "heating_holiday": { "name": "Heizung Urlaub" },
-      "light_area1_off": { "name": "Licht Bereich 1 Aus" },
-      "light_area1_scene_1": { "name": "Licht Bereich 1 Szene 1" },
-      "light_area1_scene_2": { "name": "Licht Bereich 1 Szene 2" },
-      "light_area1_scene_3": { "name": "Licht Bereich 1 Szene 3" },
-      "shade_area1_off": { "name": "Beschattung Bereich 1 Aus" },
-      "shade_area1_scene_1": { "name": "Beschattung Bereich 1 Szene 1" },
-      "shade_area1_scene_2": { "name": "Beschattung Bereich 1 Szene 2" },
-      "shade_area1_scene_3": { "name": "Beschattung Bereich 1 Szene 3" },
-      "light_area2_off": { "name": "Licht Bereich 2 Aus" },
-      "light_area2_scene_1": { "name": "Licht Bereich 2 Szene 1" },
-      "light_area2_scene_2": { "name": "Licht Bereich 2 Szene 2" },
-      "light_area2_scene_3": { "name": "Licht Bereich 2 Szene 3" },
-      "light_area2_scene_4": { "name": "Licht Bereich 2 Szene 4" },
-      "shade_area2_off": { "name": "Beschattung Bereich 2 Aus" },
-      "shade_area2_scene_1": { "name": "Beschattung Bereich 2 Szene 1" },
-      "shade_area2_scene_2": { "name": "Beschattung Bereich 2 Szene 2" },
-      "shade_area2_scene_3": { "name": "Beschattung Bereich 2 Szene 3" },
-      "shade_area2_scene_4": { "name": "Beschattung Bereich 2 Szene 4" },
-      "light_area3_off": { "name": "Licht Bereich 3 Aus" },
-      "light_area3_scene_1": { "name": "Licht Bereich 3 Szene 1" },
-      "light_area3_scene_2": { "name": "Licht Bereich 3 Szene 2" },
-      "light_area3_scene_3": { "name": "Licht Bereich 3 Szene 3" },
-      "light_area3_scene_4": { "name": "Licht Bereich 3 Szene 4" },
-      "shade_area3_off": { "name": "Beschattung Bereich 3 Aus" },
-      "shade_area3_scene_1": { "name": "Beschattung Bereich 3 Szene 1" },
-      "shade_area3_scene_2": { "name": "Beschattung Bereich 3 Szene 2" },
-      "shade_area3_scene_3": { "name": "Beschattung Bereich 3 Szene 3" },
-      "shade_area3_scene_4": { "name": "Beschattung Bereich 3 Szene 4" },
-      "light_area4_off": { "name": "Licht Bereich 4 Aus" },
-      "light_area4_scene_1": { "name": "Licht Bereich 4 Szene 1" },
-      "light_area4_scene_2": { "name": "Licht Bereich 4 Szene 2" },
-      "light_area4_scene_3": { "name": "Licht Bereich 4 Szene 3" },
-      "light_area4_scene_4": { "name": "Licht Bereich 4 Szene 4" },
-      "shade_area4_off": { "name": "Beschattung Bereich 4 Aus" },
-      "shade_area4_scene_1": { "name": "Beschattung Bereich 4 Szene 1" },
-      "shade_area4_scene_2": { "name": "Beschattung Bereich 4 Szene 2" },
-      "shade_area4_scene_3": { "name": "Beschattung Bereich 4 Szene 3" },
-      "shade_area4_scene_4": { "name": "Beschattung Bereich 4 Szene 4" }
+      "light_off": {
+        "name": "Licht Aus"
+      },
+      "light_scene_1": {
+        "name": "Licht Szene 1"
+      },
+      "light_scene_2": {
+        "name": "Licht Szene 2"
+      },
+      "light_scene_3": {
+        "name": "Licht Szene 3"
+      },
+      "light_scene_4": {
+        "name": "Licht Szene 4"
+      },
+      "shade_close": {
+        "name": "Beschattung Schließen"
+      },
+      "shade_open": {
+        "name": "Beschattung Öffnen"
+      },
+      "shade_preset_2": {
+        "name": "Beschattung Preset 2"
+      },
+      "shade_preset_3": {
+        "name": "Beschattung Preset 3"
+      },
+      "shade_preset_4": {
+        "name": "Beschattung Preset 4"
+      },
+      "heating_protection": {
+        "name": "Heizung Frostschutz"
+      },
+      "heating_comfort": {
+        "name": "Heizung Komfort"
+      },
+      "heating_economy": {
+        "name": "Heizung Eco"
+      },
+      "heating_night": {
+        "name": "Heizung Nacht"
+      },
+      "heating_holiday": {
+        "name": "Heizung Urlaub"
+      },
+      "light_area1_off": {
+        "name": "Licht Bereich 1 Aus"
+      },
+      "light_area1_scene_1": {
+        "name": "Licht Bereich 1 Szene 1"
+      },
+      "light_area1_scene_2": {
+        "name": "Licht Bereich 1 Szene 2"
+      },
+      "light_area1_scene_3": {
+        "name": "Licht Bereich 1 Szene 3"
+      },
+      "shade_area1_off": {
+        "name": "Beschattung Bereich 1 Aus"
+      },
+      "shade_area1_scene_1": {
+        "name": "Beschattung Bereich 1 Szene 1"
+      },
+      "shade_area1_scene_2": {
+        "name": "Beschattung Bereich 1 Szene 2"
+      },
+      "shade_area1_scene_3": {
+        "name": "Beschattung Bereich 1 Szene 3"
+      },
+      "light_area2_off": {
+        "name": "Licht Bereich 2 Aus"
+      },
+      "light_area2_scene_1": {
+        "name": "Licht Bereich 2 Szene 1"
+      },
+      "light_area2_scene_2": {
+        "name": "Licht Bereich 2 Szene 2"
+      },
+      "light_area2_scene_3": {
+        "name": "Licht Bereich 2 Szene 3"
+      },
+      "light_area2_scene_4": {
+        "name": "Licht Bereich 2 Szene 4"
+      },
+      "shade_area2_off": {
+        "name": "Beschattung Bereich 2 Aus"
+      },
+      "shade_area2_scene_1": {
+        "name": "Beschattung Bereich 2 Szene 1"
+      },
+      "shade_area2_scene_2": {
+        "name": "Beschattung Bereich 2 Szene 2"
+      },
+      "shade_area2_scene_3": {
+        "name": "Beschattung Bereich 2 Szene 3"
+      },
+      "shade_area2_scene_4": {
+        "name": "Beschattung Bereich 2 Szene 4"
+      },
+      "light_area3_off": {
+        "name": "Licht Bereich 3 Aus"
+      },
+      "light_area3_scene_1": {
+        "name": "Licht Bereich 3 Szene 1"
+      },
+      "light_area3_scene_2": {
+        "name": "Licht Bereich 3 Szene 2"
+      },
+      "light_area3_scene_3": {
+        "name": "Licht Bereich 3 Szene 3"
+      },
+      "light_area3_scene_4": {
+        "name": "Licht Bereich 3 Szene 4"
+      },
+      "shade_area3_off": {
+        "name": "Beschattung Bereich 3 Aus"
+      },
+      "shade_area3_scene_1": {
+        "name": "Beschattung Bereich 3 Szene 1"
+      },
+      "shade_area3_scene_2": {
+        "name": "Beschattung Bereich 3 Szene 2"
+      },
+      "shade_area3_scene_3": {
+        "name": "Beschattung Bereich 3 Szene 3"
+      },
+      "shade_area3_scene_4": {
+        "name": "Beschattung Bereich 3 Szene 4"
+      },
+      "light_area4_off": {
+        "name": "Licht Bereich 4 Aus"
+      },
+      "light_area4_scene_1": {
+        "name": "Licht Bereich 4 Szene 1"
+      },
+      "light_area4_scene_2": {
+        "name": "Licht Bereich 4 Szene 2"
+      },
+      "light_area4_scene_3": {
+        "name": "Licht Bereich 4 Szene 3"
+      },
+      "light_area4_scene_4": {
+        "name": "Licht Bereich 4 Szene 4"
+      },
+      "shade_area4_off": {
+        "name": "Beschattung Bereich 4 Aus"
+      },
+      "shade_area4_scene_1": {
+        "name": "Beschattung Bereich 4 Szene 1"
+      },
+      "shade_area4_scene_2": {
+        "name": "Beschattung Bereich 4 Szene 2"
+      },
+      "shade_area4_scene_3": {
+        "name": "Beschattung Bereich 4 Szene 3"
+      },
+      "shade_area4_scene_4": {
+        "name": "Beschattung Bereich 4 Szene 4"
+      }
     }
   }
 }

@@ -14,8 +14,9 @@ import logging
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST, CONF_PORT, EVENT_HOMEASSISTANT_STOP
 from homeassistant.core import HomeAssistant, ServiceCall
+from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
 
-from .api import DigitalStromApi, DigitalStromApiError
+from .api import DigitalStromApi, DigitalStromApiError, DigitalStromAuthError
 from .const import (
     DOMAIN,
     PLATFORMS_FREE,
@@ -45,21 +46,34 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         app_token=entry.data[CONF_APP_TOKEN],
     )
 
-    # Connect
+    # Connect. Distinguish a dead/invalid app token (→ reauth) from a plain
+    # connection failure (→ retry). A dSS firmware update can invalidate the
+    # stored app token; without this split HA would just keep failing setup.
     try:
         await api.connect()
-    except DigitalStromApiError as err:
-        _LOGGER.error("Failed to connect to dSS: %s", err)
+    except DigitalStromAuthError as err:
         await api.close()
-        return False
+        _LOGGER.warning("dSS app token rejected — re-authentication required: %s", err)
+        raise ConfigEntryAuthFailed(
+            "Digital Strom app token is no longer valid (often after a dSS "
+            "firmware update). Please re-authorise a new token in the dSS."
+        ) from err
+    except DigitalStromApiError as err:
+        await api.close()
+        raise ConfigEntryNotReady(f"Cannot connect to dSS at {entry.data[CONF_HOST]}: {err}") from err
 
     # Get structure
     try:
         structure = await api.get_structure()
-    except DigitalStromApiError as err:
-        _LOGGER.error("Failed to get structure: %s", err)
+    except DigitalStromAuthError as err:
         await api.close()
-        return False
+        _LOGGER.warning("dSS rejected token while reading structure: %s", err)
+        raise ConfigEntryAuthFailed(
+            "Digital Strom app token is no longer valid. Please re-authorise."
+        ) from err
+    except DigitalStromApiError as err:
+        await api.close()
+        raise ConfigEntryNotReady(f"Cannot read structure from dSS: {err}") from err
 
     # Create coordinator
     dss_id = entry.data.get(CONF_DSS_ID, "")

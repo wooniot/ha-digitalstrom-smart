@@ -24,6 +24,10 @@
           "host": "IP-adres",
           "port": "Poort"
         }
+      },
+      "reauth_confirm": {
+        "title": "Digital Strom opnieuw verifiëren",
+        "description": "Het app-token voor de dSS op {host} is niet langer geldig — dit gebeurt vaak na een dSS firmware-update.\n\n1. Open de dSS-webinterface → **Systeem → Toegangsautorisatie**.\n2. Keur het nieuwe applicatie-token **{token}** goed.\n3. Klik hieronder op **Verzenden**.\n\nUw instellingen, Pro-licentie en entiteiten blijven behouden."
       }
     },
     "error": {
@@ -34,7 +38,8 @@
     "abort": {
       "cannot_connect": "Kon geen verbinding maken met dSS na authenticatie.",
       "already_configured": "Deze Digital Strom server is al geconfigureerd.",
-      "reconfigure_successful": "Het dSS-adres is bijgewerkt."
+      "reconfigure_successful": "Het dSS-adres is bijgewerkt.",
+      "reauth_successful": "Opnieuw verifiëren gelukt — het nieuwe token is opgeslagen."
     },
     "flow_title": "{host}"
   },
@@ -57,51 +62,125 @@
   },
   "entity": {
     "sensor": {
-      "ws_outdoor_temperature": { "name": "Buitentemperatuur" },
-      "sun_azimuth": { "name": "Zon-azimut" },
-      "sun_elevation": { "name": "Zonhoogte" },
-      "power_consumption": { "name": "Stroomverbruik" },
-      "temperature": { "name": "Temperatuur" },
-      "current_temperature": { "name": "Temperatuur" },
-      "target_temperature": { "name": "Doeltemperatuur" },
-      "heating_output": { "name": "Verwarmingsuitgang" },
-      "circuit_power": { "name": "Vermogen" },
-      "circuit_energy": { "name": "Energie" },
-      "apartment_energy": { "name": "Energieverbruik" },
-      "outdoor_temperature": { "name": "Buitentemperatuur" },
-      "outdoor_humidity": { "name": "Luchtvochtigheid buiten" },
-      "outdoor_brightness": { "name": "Helderheid buiten" },
-      "wind_speed": { "name": "Windsnelheid" },
-      "wind_gust": { "name": "Windvlagen" },
-      "air_pressure": { "name": "Luchtdruk" },
-      "rain_intensity": { "name": "Regen" },
-      "device_temperature": { "name": "Temperatuur" },
-      "device_humidity": { "name": "Luchtvochtigheid" },
-      "device_brightness": { "name": "Helderheid" },
-      "device_co2": { "name": "CO2" },
-      "license_status": { "name": "Licentie Status" }
+      "ws_outdoor_temperature": {
+        "name": "Buitentemperatuur"
+      },
+      "sun_azimuth": {
+        "name": "Zon-azimut"
+      },
+      "sun_elevation": {
+        "name": "Zonhoogte"
+      },
+      "power_consumption": {
+        "name": "Stroomverbruik"
+      },
+      "temperature": {
+        "name": "Temperatuur"
+      },
+      "current_temperature": {
+        "name": "Temperatuur"
+      },
+      "target_temperature": {
+        "name": "Doeltemperatuur"
+      },
+      "heating_output": {
+        "name": "Verwarmingsuitgang"
+      },
+      "circuit_power": {
+        "name": "Vermogen"
+      },
+      "circuit_energy": {
+        "name": "Energie"
+      },
+      "apartment_energy": {
+        "name": "Energieverbruik"
+      },
+      "outdoor_temperature": {
+        "name": "Buitentemperatuur"
+      },
+      "outdoor_humidity": {
+        "name": "Luchtvochtigheid buiten"
+      },
+      "outdoor_brightness": {
+        "name": "Helderheid buiten"
+      },
+      "wind_speed": {
+        "name": "Windsnelheid"
+      },
+      "wind_gust": {
+        "name": "Windvlagen"
+      },
+      "air_pressure": {
+        "name": "Luchtdruk"
+      },
+      "rain_intensity": {
+        "name": "Regen"
+      },
+      "device_temperature": {
+        "name": "Temperatuur"
+      },
+      "device_humidity": {
+        "name": "Luchtvochtigheid"
+      },
+      "device_brightness": {
+        "name": "Helderheid"
+      },
+      "device_co2": {
+        "name": "CO2"
+      },
+      "license_status": {
+        "name": "Licentie Status"
+      }
     },
     "light": {
-      "zone_light": { "name": "Verlichting" }
+      "zone_light": {
+        "name": "Verlichting"
+      }
     },
     "cover": {
-      "zone_cover": { "name": "Raambekleding" }
+      "zone_cover": {
+        "name": "Raambekleding"
+      }
     },
     "climate": {
-      "zone_climate": { "name": "Klimaat" }
+      "zone_climate": {
+        "name": "Klimaat"
+      }
     },
     "switch": {
-      "fire": { "name": "Brand" },
-      "rain_protection": { "name": "Regen" },
-      "frost": { "name": "Vorst" },
-      "hail": { "name": "Hagel" },
-      "wind": { "name": "Wind" },
-      "alarm_1": { "name": "Alarm 1" },
-      "alarm_2": { "name": "Alarm 2" },
-      "alarm_3": { "name": "Alarm 3" },
-      "alarm_4": { "name": "Alarm 4" },
-      "panic": { "name": "Paniek" },
-      "doorbell": { "name": "Deurbel" }
+      "fire": {
+        "name": "Brand"
+      },
+      "rain_protection": {
+        "name": "Regen"
+      },
+      "frost": {
+        "name": "Vorst"
+      },
+      "hail": {
+        "name": "Hagel"
+      },
+      "wind": {
+        "name": "Wind"
+      },
+      "alarm_1": {
+        "name": "Alarm 1"
+      },
+      "alarm_2": {
+        "name": "Alarm 2"
+      },
+      "alarm_3": {
+        "name": "Alarm 3"
+      },
+      "alarm_4": {
+        "name": "Alarm 4"
+      },
+      "panic": {
+        "name": "Paniek"
+      },
+      "doorbell": {
+        "name": "Deurbel"
+      }
     },
     "select": {
       "presence_mode": {
@@ -117,79 +196,221 @@
       }
     },
     "binary_sensor": {
-      "daynight": { "name": "Dag/Nacht" },
-      "twilight": { "name": "Schemering" },
-      "daylight": { "name": "Daglicht" },
-      "holiday": { "name": "Vakantie" },
-      "malfunction": { "name": "Storing" },
-      "service": { "name": "Service nodig" },
-      "alarm_3_active": { "name": "Alarm 3" },
-      "frost": { "name": "Vorst" },
-      "hail": { "name": "Hagel" },
-      "wind": { "name": "Wind" },
-      "rain": { "name": "Regen" },
-      "rain_protection": { "name": "Regenbescherming" },
-      "fire": { "name": "Brand" },
-      "alarm_1_active": { "name": "Alarm 1" },
-      "alarm_2_active": { "name": "Alarm 2" },
-      "alarm_4_active": { "name": "Alarm 4" },
-      "panic_active": { "name": "Paniek" },
-      "doorbell_active": { "name": "Deurbel" }
+      "daynight": {
+        "name": "Dag/Nacht"
+      },
+      "twilight": {
+        "name": "Schemering"
+      },
+      "daylight": {
+        "name": "Daglicht"
+      },
+      "holiday": {
+        "name": "Vakantie"
+      },
+      "malfunction": {
+        "name": "Storing"
+      },
+      "service": {
+        "name": "Service nodig"
+      },
+      "alarm_3_active": {
+        "name": "Alarm 3"
+      },
+      "frost": {
+        "name": "Vorst"
+      },
+      "hail": {
+        "name": "Hagel"
+      },
+      "wind": {
+        "name": "Wind"
+      },
+      "rain": {
+        "name": "Regen"
+      },
+      "rain_protection": {
+        "name": "Regenbescherming"
+      },
+      "fire": {
+        "name": "Brand"
+      },
+      "alarm_1_active": {
+        "name": "Alarm 1"
+      },
+      "alarm_2_active": {
+        "name": "Alarm 2"
+      },
+      "alarm_4_active": {
+        "name": "Alarm 4"
+      },
+      "panic_active": {
+        "name": "Paniek"
+      },
+      "doorbell_active": {
+        "name": "Deurbel"
+      }
     },
     "scene": {
-      "light_off": { "name": "Verlichting Uit" },
-      "light_scene_1": { "name": "Verlichting Scene 1" },
-      "light_scene_2": { "name": "Verlichting Scene 2" },
-      "light_scene_3": { "name": "Verlichting Scene 3" },
-      "light_scene_4": { "name": "Verlichting Scene 4" },
-      "shade_close": { "name": "Zonwering Dicht" },
-      "shade_open": { "name": "Zonwering Open" },
-      "shade_preset_2": { "name": "Zonwering Preset 2" },
-      "shade_preset_3": { "name": "Zonwering Preset 3" },
-      "shade_preset_4": { "name": "Zonwering Preset 4" },
-      "heating_protection": { "name": "Verwarming Vorstbeveiliging" },
-      "heating_comfort": { "name": "Verwarming Comfort" },
-      "heating_economy": { "name": "Verwarming Eco" },
-      "heating_night": { "name": "Verwarming Nacht" },
-      "heating_holiday": { "name": "Verwarming Vakantie" },
-      "light_area1_off": { "name": "Verlichting Zone 1 Uit" },
-      "light_area1_scene_1": { "name": "Verlichting Zone 1 Scene 1" },
-      "light_area1_scene_2": { "name": "Verlichting Zone 1 Scene 2" },
-      "light_area1_scene_3": { "name": "Verlichting Zone 1 Scene 3" },
-      "shade_area1_off": { "name": "Zonwering Zone 1 Uit" },
-      "shade_area1_scene_1": { "name": "Zonwering Zone 1 Scene 1" },
-      "shade_area1_scene_2": { "name": "Zonwering Zone 1 Scene 2" },
-      "shade_area1_scene_3": { "name": "Zonwering Zone 1 Scene 3" },
-      "light_area2_off": { "name": "Verlichting Zone 2 Uit" },
-      "light_area2_scene_1": { "name": "Verlichting Zone 2 Scene 1" },
-      "light_area2_scene_2": { "name": "Verlichting Zone 2 Scene 2" },
-      "light_area2_scene_3": { "name": "Verlichting Zone 2 Scene 3" },
-      "light_area2_scene_4": { "name": "Verlichting Zone 2 Scene 4" },
-      "shade_area2_off": { "name": "Zonwering Zone 2 Uit" },
-      "shade_area2_scene_1": { "name": "Zonwering Zone 2 Scene 1" },
-      "shade_area2_scene_2": { "name": "Zonwering Zone 2 Scene 2" },
-      "shade_area2_scene_3": { "name": "Zonwering Zone 2 Scene 3" },
-      "shade_area2_scene_4": { "name": "Zonwering Zone 2 Scene 4" },
-      "light_area3_off": { "name": "Verlichting Zone 3 Uit" },
-      "light_area3_scene_1": { "name": "Verlichting Zone 3 Scene 1" },
-      "light_area3_scene_2": { "name": "Verlichting Zone 3 Scene 2" },
-      "light_area3_scene_3": { "name": "Verlichting Zone 3 Scene 3" },
-      "light_area3_scene_4": { "name": "Verlichting Zone 3 Scene 4" },
-      "shade_area3_off": { "name": "Zonwering Zone 3 Uit" },
-      "shade_area3_scene_1": { "name": "Zonwering Zone 3 Scene 1" },
-      "shade_area3_scene_2": { "name": "Zonwering Zone 3 Scene 2" },
-      "shade_area3_scene_3": { "name": "Zonwering Zone 3 Scene 3" },
-      "shade_area3_scene_4": { "name": "Zonwering Zone 3 Scene 4" },
-      "light_area4_off": { "name": "Verlichting Zone 4 Uit" },
-      "light_area4_scene_1": { "name": "Verlichting Zone 4 Scene 1" },
-      "light_area4_scene_2": { "name": "Verlichting Zone 4 Scene 2" },
-      "light_area4_scene_3": { "name": "Verlichting Zone 4 Scene 3" },
-      "light_area4_scene_4": { "name": "Verlichting Zone 4 Scene 4" },
-      "shade_area4_off": { "name": "Zonwering Zone 4 Uit" },
-      "shade_area4_scene_1": { "name": "Zonwering Zone 4 Scene 1" },
-      "shade_area4_scene_2": { "name": "Zonwering Zone 4 Scene 2" },
-      "shade_area4_scene_3": { "name": "Zonwering Zone 4 Scene 3" },
-      "shade_area4_scene_4": { "name": "Zonwering Zone 4 Scene 4" }
+      "light_off": {
+        "name": "Verlichting Uit"
+      },
+      "light_scene_1": {
+        "name": "Verlichting Scene 1"
+      },
+      "light_scene_2": {
+        "name": "Verlichting Scene 2"
+      },
+      "light_scene_3": {
+        "name": "Verlichting Scene 3"
+      },
+      "light_scene_4": {
+        "name": "Verlichting Scene 4"
+      },
+      "shade_close": {
+        "name": "Zonwering Dicht"
+      },
+      "shade_open": {
+        "name": "Zonwering Open"
+      },
+      "shade_preset_2": {
+        "name": "Zonwering Preset 2"
+      },
+      "shade_preset_3": {
+        "name": "Zonwering Preset 3"
+      },
+      "shade_preset_4": {
+        "name": "Zonwering Preset 4"
+      },
+      "heating_protection": {
+        "name": "Verwarming Vorstbeveiliging"
+      },
+      "heating_comfort": {
+        "name": "Verwarming Comfort"
+      },
+      "heating_economy": {
+        "name": "Verwarming Eco"
+      },
+      "heating_night": {
+        "name": "Verwarming Nacht"
+      },
+      "heating_holiday": {
+        "name": "Verwarming Vakantie"
+      },
+      "light_area1_off": {
+        "name": "Verlichting Zone 1 Uit"
+      },
+      "light_area1_scene_1": {
+        "name": "Verlichting Zone 1 Scene 1"
+      },
+      "light_area1_scene_2": {
+        "name": "Verlichting Zone 1 Scene 2"
+      },
+      "light_area1_scene_3": {
+        "name": "Verlichting Zone 1 Scene 3"
+      },
+      "shade_area1_off": {
+        "name": "Zonwering Zone 1 Uit"
+      },
+      "shade_area1_scene_1": {
+        "name": "Zonwering Zone 1 Scene 1"
+      },
+      "shade_area1_scene_2": {
+        "name": "Zonwering Zone 1 Scene 2"
+      },
+      "shade_area1_scene_3": {
+        "name": "Zonwering Zone 1 Scene 3"
+      },
+      "light_area2_off": {
+        "name": "Verlichting Zone 2 Uit"
+      },
+      "light_area2_scene_1": {
+        "name": "Verlichting Zone 2 Scene 1"
+      },
+      "light_area2_scene_2": {
+        "name": "Verlichting Zone 2 Scene 2"
+      },
+      "light_area2_scene_3": {
+        "name": "Verlichting Zone 2 Scene 3"
+      },
+      "light_area2_scene_4": {
+        "name": "Verlichting Zone 2 Scene 4"
+      },
+      "shade_area2_off": {
+        "name": "Zonwering Zone 2 Uit"
+      },
+      "shade_area2_scene_1": {
+        "name": "Zonwering Zone 2 Scene 1"
+      },
+      "shade_area2_scene_2": {
+        "name": "Zonwering Zone 2 Scene 2"
+      },
+      "shade_area2_scene_3": {
+        "name": "Zonwering Zone 2 Scene 3"
+      },
+      "shade_area2_scene_4": {
+        "name": "Zonwering Zone 2 Scene 4"
+      },
+      "light_area3_off": {
+        "name": "Verlichting Zone 3 Uit"
+      },
+      "light_area3_scene_1": {
+        "name": "Verlichting Zone 3 Scene 1"
+      },
+      "light_area3_scene_2": {
+        "name": "Verlichting Zone 3 Scene 2"
+      },
+      "light_area3_scene_3": {
+        "name": "Verlichting Zone 3 Scene 3"
+      },
+      "light_area3_scene_4": {
+        "name": "Verlichting Zone 3 Scene 4"
+      },
+      "shade_area3_off": {
+        "name": "Zonwering Zone 3 Uit"
+      },
+      "shade_area3_scene_1": {
+        "name": "Zonwering Zone 3 Scene 1"
+      },
+      "shade_area3_scene_2": {
+        "name": "Zonwering Zone 3 Scene 2"
+      },
+      "shade_area3_scene_3": {
+        "name": "Zonwering Zone 3 Scene 3"
+      },
+      "shade_area3_scene_4": {
+        "name": "Zonwering Zone 3 Scene 4"
+      },
+      "light_area4_off": {
+        "name": "Verlichting Zone 4 Uit"
+      },
+      "light_area4_scene_1": {
+        "name": "Verlichting Zone 4 Scene 1"
+      },
+      "light_area4_scene_2": {
+        "name": "Verlichting Zone 4 Scene 2"
+      },
+      "light_area4_scene_3": {
+        "name": "Verlichting Zone 4 Scene 3"
+      },
+      "light_area4_scene_4": {
+        "name": "Verlichting Zone 4 Scene 4"
+      },
+      "shade_area4_off": {
+        "name": "Zonwering Zone 4 Uit"
+      },
+      "shade_area4_scene_1": {
+        "name": "Zonwering Zone 4 Scene 1"
+      },
+      "shade_area4_scene_2": {
+        "name": "Zonwering Zone 4 Scene 2"
+      },
+      "shade_area4_scene_3": {
+        "name": "Zonwering Zone 4 Scene 3"
+      },
+      "shade_area4_scene_4": {
+        "name": "Zonwering Zone 4 Scene 4"
+      }
     }
   }
 }

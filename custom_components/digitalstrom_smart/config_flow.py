@@ -164,6 +164,53 @@ class DigitalStromSmartConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             errors=errors,
         )
 
+    async def async_step_reauth(self, entry_data):
+        """Token rejected (e.g. after a dSS firmware update) — re-pair in place.
+
+        Keeps the entry, its unique_id, options (Pro license) and all entities;
+        only the stored app token is replaced. Triggered by ConfigEntryAuthFailed.
+        """
+        entry = self._get_reauth_entry()
+        self._data = dict(entry.data)
+        self._api = DigitalStromApi(
+            host=entry.data[CONF_HOST],
+            port=entry.data.get(CONF_PORT, 8080),
+        )
+        self._pending_token = None
+        return await self.async_step_reauth_confirm()
+
+    async def async_step_reauth_confirm(self, user_input=None):
+        """Request a fresh app token and wait for the user to approve it in the dSS."""
+        entry = self._get_reauth_entry()
+        errors = {}
+
+        if user_input is not None and self._pending_token:
+            # Submit means "I approved the token in the dSS admin".
+            if await self._api.check_app_token(self._pending_token):
+                await self._api.close()
+                return self.async_update_reload_and_abort(
+                    entry, data_updates={CONF_APP_TOKEN: self._pending_token}
+                )
+            errors["base"] = "token_not_approved"
+
+        # Request a token on first entry; keep the same one across "not approved" retries.
+        if not self._pending_token:
+            try:
+                self._pending_token = await self._api.request_app_token()
+            except DigitalStromApiError as err:
+                _LOGGER.error("Reauth: could not request token: %s", err)
+                return self.async_abort(reason="cannot_connect")
+
+        return self.async_show_form(
+            step_id="reauth_confirm",
+            data_schema=vol.Schema({}),
+            errors=errors,
+            description_placeholders={
+                "host": entry.data.get(CONF_HOST, ""),
+                "token": self._pending_token[:20] + "..." if self._pending_token else "",
+            },
+        )
+
     async def async_step_approve_token(self, user_input=None):
         """Step 2: Wait for user to approve token in dSS admin."""
         errors = {}
