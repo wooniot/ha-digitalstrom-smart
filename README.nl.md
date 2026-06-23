@@ -110,6 +110,16 @@ Ga na de installatie naar de integratie-opties om:
 - **De rolluikrichting om te keren** als schermen de verkeerde kant op bewegen
 - **Je Pro-licentiesleutel in te voeren** om geavanceerde functies te ontgrendelen
 
+## Na een dSS firmware-update (bijv. 1.19.13)
+
+Een firmware-update van de dSS kan drie dingen veranderen die de koppeling raken. De integratie vangt dit nu automatisch op, maar het is goed om te weten:
+
+- **Het IP-adres kan wijzigen** (DHCP). De integratie herstelt het IP zelf via auto-detectie, maar een **vast IP of DHCP-reservering** voor de dSS voorkomt dit volledig. **Aanbevolen.**
+- **Het app-token kan ongeldig worden.** Home Assistant toont dan een melding **"Herauthenticatie vereist"**. Klik erop, keur het nieuwe token goed in de dSS-webinterface (**Systeem > Toegangsautorisatie**) en klik op Verzenden. Je instellingen, Pro-licentie en entiteiten blijven behouden — opnieuw koppelen is niet nodig.
+- **De interne dSS-identifier kan veranderen.** Hierdoor kan een **Pro-licentie tijdelijk losraken**. Dit wordt aan onze kant (server-side) automatisch opnieuw gebonden; werkt Pro na een update niet meer, neem dan contact op via info@wooniot.nl.
+
+> **Tip:** een vast IP-adres voor de dSS voorkomt de helft van de problemen. Controleer na een grote firmware-sprong of alle entiteiten weer waarden tonen.
+
 ## Aangemaakte entiteiten
 
 Per zone met apparaten:

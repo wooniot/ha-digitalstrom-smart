@@ -110,6 +110,16 @@ Nach der Einrichtung können Sie in den Integrationsoptionen:
 - **Beschattungsrichtung umkehren**, falls Jalousien/Rollläden in die falsche Richtung fahren
 - **Pro-Lizenzschlüssel eingeben**, um erweiterte Funktionen freizuschalten
 
+## Nach einem dSS-Firmware-Update (z. B. 1.19.13)
+
+Ein Firmware-Update des dSS kann drei Dinge ändern, die die Anbindung betreffen. Die Integration fängt dies jetzt automatisch ab, aber gut zu wissen:
+
+- **Die IP-Adresse kann sich ändern** (DHCP). Die Integration stellt die IP per Auto-Erkennung selbst wieder her, aber eine **feste IP oder DHCP-Reservierung** für das dSS vermeidet das vollständig. **Empfohlen.**
+- **Das App-Token kann ungültig werden.** Home Assistant zeigt dann eine Meldung **„Erneute Authentifizierung erforderlich"**. Klicken Sie darauf, genehmigen Sie das neue Token in der dSS-Weboberfläche (**System > Zugriffsberechtigung**) und klicken Sie auf Senden. Ihre Einstellungen, Pro-Lizenz und Entitäten bleiben erhalten — ein erneutes Koppeln ist nicht nötig.
+- **Die interne dSS-Kennung kann sich ändern.** Dadurch kann eine **Pro-Lizenz vorübergehend getrennt** werden. Dies wird auf unserer Seite (serverseitig) automatisch neu gebunden; funktioniert Pro nach einem Update nicht mehr, wenden Sie sich an info@wooniot.nl.
+
+> **Tipp:** Eine feste IP für das dSS verhindert die Hälfte der Probleme. Prüfen Sie nach einem großen Firmware-Sprung, ob alle Entitäten wieder Werte anzeigen.
+
 ## Erstellte Entitäten
 
 Für jede Zone mit Geräten:

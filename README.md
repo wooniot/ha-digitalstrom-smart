@@ -110,6 +110,16 @@ After setup, go to the integration options to:
 - **Invert cover direction** if blinds/screens move the wrong way
 - **Enter Pro license key** to unlock advanced features
 
+## After a dSS firmware update (e.g. 1.19.13)
+
+A dSS firmware update can change three things that affect the connection. The integration now recovers from these automatically, but it's good to know:
+
+- **The IP address may change** (DHCP). The integration self-heals the IP via auto-discovery, but a **static IP or DHCP reservation** for the dSS avoids this entirely. **Recommended.**
+- **The app token may become invalid.** Home Assistant then shows a **"Re-authentication required"** notification. Click it, approve the new token in the dSS web interface (**System > Access Authorization**) and click Submit. Your settings, Pro license and entities are kept — no need to re-pair.
+- **The internal dSS identifier may change.** This can temporarily **unbind a Pro license**. It is automatically re-bound on our side (server-side); if Pro stops working after an update, contact info@wooniot.nl.
+
+> **Tip:** a static IP for the dSS prevents half of these issues. After a major firmware jump, verify that all entities show values again.
+
 ## Entities created
 
 For each zone with devices:
