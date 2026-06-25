@@ -244,6 +244,10 @@ Home Assistant automatically uses the correct language based on your system lang
 
 ## Changelog
 
+### v4.1.4 (2026-06-25) — Control value sensor (cooling/heating demand from DS)
+
+- **New "Control value" sensor per climate zone**: exposes the DS temperature-control output as a signed value — **negative = cooling demand, positive = heating demand** (magnitude = intensity). Works in cooling mode too, where a setpoint is absent. The value is now also read from the per-zone temperature-control status (not only the apartment poll), and the sensor is always created for zones with temperature control.
+
 ### v4.1.3 (2026-06-25) — Joker switch: correct status after startup
 
 - **Joker actuators used as a switch**: the status right after the integration starts is now correct. Previously an actuator could wrongly appear "on" just after startup because the initial state came from an unreliable structure field; it is now derived from the actual output state (the same source as the status poll). Follow-up to v4.1.2.

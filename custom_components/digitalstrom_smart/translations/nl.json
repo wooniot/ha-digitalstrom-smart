@@ -86,6 +86,9 @@
       "heating_output": {
         "name": "Verwarmingsuitgang"
       },
+      "control_value": {
+        "name": "Regelwaarde"
+      },
       "circuit_power": {
         "name": "Vermogen"
       },

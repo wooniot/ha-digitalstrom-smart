@@ -236,6 +236,10 @@ Home Assistant verwendet automatisch die richtige Sprache basierend auf Ihrer Sy
 
 ## Änderungsprotokoll
 
+### v4.1.4 (25.06.2026) — Regelwert-Sensor (Kühl-/Heizanforderung aus dem DS)
+
+- **Neuer Sensor „Regelwert" je Klimazone**: zeigt die Ansteuerung der DS-Temperaturregelung als vorzeichenbehafteten Wert — **negativ = Kühlanforderung, positiv = Heizanforderung** (Betrag = Intensität). Funktioniert auch im Kühlmodus, wo ein Sollwert fehlt. Der Wert wird jetzt auch aus dem zonenweisen Temperaturregelungs-Status gelesen (nicht nur der Apartment-Abfrage), und der Sensor wird immer für Zonen mit Temperaturregelung erstellt.
+
 ### v4.1.3 (25.06.2026) — Joker-Schalter: korrekter Status nach dem Start
 
 - **Joker-Aktoren als Schalter**: der Status direkt nach dem Start der Integration ist jetzt korrekt. Bisher konnte ein Aktor kurz nach dem Start fälschlich als „ein" erscheinen, weil der Anfangsstatus aus einem unzuverlässigen Strukturfeld stammte; er wird nun aus dem tatsächlichen Ausgangsstatus abgeleitet (dieselbe Quelle wie die Status-Abfrage). Ergänzung zu v4.1.2.

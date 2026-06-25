@@ -244,6 +244,10 @@ Home Assistant gebruikt automatisch de juiste taal op basis van je systeemtaal. 
 
 ## Wijzigingslog
 
+### v4.1.4 (25-06-2026) — Regelwaarde-sensor (koel-/verwarmvraag uit de DS)
+
+- **Nieuwe sensor "Regelwaarde" per klimaatzone**: toont de aansturing van de DS-temperatuurregeling als waarde mét teken — **negatief = koelvraag, positief = verwarmvraag** (grootte = intensiteit). Werkt ook in koelmodus, waar een setpoint ontbreekt. De waarde wordt nu ook uit de per-zone temperatuurregeling-status gelezen (niet alleen de apartement-uitlezing), en de sensor wordt altijd aangemaakt voor zones met temperatuurregeling.
+
 ### v4.1.3 (25-06-2026) — Joker-schakelaar: juiste status na opstarten
 
 - **Joker-actoren als schakelaar**: de status direct na het opstarten van de integratie is nu correct. Voorheen kon een actor vlak na de start ten onrechte als "aan" verschijnen omdat de beginstatus uit een onbetrouwbaar structuurveld kwam; deze wordt nu uit de werkelijke uitgangsstatus afgeleid (dezelfde bron als de status-poll). Aanvulling op v4.1.2.

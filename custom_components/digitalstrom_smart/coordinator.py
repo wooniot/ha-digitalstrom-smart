@@ -918,10 +918,17 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
         return self.get_current_temperature(zone_id)
 
     def get_control_value(self, zone_id: int) -> float | None:
-        """Get heating control output value (0-100%) for a zone."""
+        """Get the zone control value (signed): NEGATIEF = koelvraag,
+        POSITIEF = verwarmvraag (de dSS-vloerklep-aansturing). Werkt zo ook in
+        koelmodus. Bron: apartement getTemperatureControlValues eerst, anders de
+        per-zone getTemperatureControlStatus (die ook gevuld is als de apartement-
+        poll ControlMode=0 teruggeeft, bv. tijdens koelen)."""
         data = self._temperatures.get(zone_id)
-        if data and "ControlValue" in data:
+        if data and data.get("ControlValue") is not None:
             return data["ControlValue"]
+        status = self._climate_status.get(zone_id)
+        if status and status.get("ControlValue") is not None:
+            return status["ControlValue"]
         return None
 
     def get_climate_status(self, zone_id: int) -> dict | None:

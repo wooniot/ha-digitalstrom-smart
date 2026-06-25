@@ -178,6 +178,12 @@ async def async_setup_entry(
                 entities.append(
                     DigitalStromHeatingOutputSensor(coordinator, zone_id, zone_info)
                 )
+            # Regelwaarde (signed): negatief = koelvraag, positief = verwarmvraag.
+            # ALTIJD aanmaken (niet gated op een waarde bij opstart) zodat 'ie ook
+            # in koelmodus verschijnt en vult zodra de dSS de waarde levert.
+            entities.append(
+                DigitalStromControlValueSensor(coordinator, zone_id, zone_info)
+            )
         else:
             # Zone without temp control: show temperature if available from any source
             temp = coordinator.get_any_temperature(zone_id)
@@ -469,6 +475,39 @@ class DigitalStromHeatingOutputSensor(CoordinatorEntity, SensorEntity):
         if val is not None:
             return round(val * 100 / 255) if val > 1 else round(val * 100)
         return None
+
+    @callback
+    def _handle_coordinator_update(self):
+        self.async_write_ha_state()
+
+
+class DigitalStromControlValueSensor(CoordinatorEntity, SensorEntity):
+    """Zone-regelwaarde (signed) uit de dSS temperatuurregeling: NEGATIEF = koelvraag,
+    POSITIEF = verwarmvraag, grootte = intensiteit (vloerklep-aansturing). Werkt ook in
+    koelmodus, waar een setpoint ontbreekt. Ruwe waarde — schaal wordt later bepaald."""
+
+    _attr_has_entity_name = True
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_icon = "mdi:valve"
+
+    def __init__(self, coordinator, zone_id, zone_info):
+        super().__init__(coordinator)
+        self._zone_id = zone_id
+        dss_id = coordinator.dss_id
+        self._attr_unique_id = f"ds_{dss_id}_{zone_id}_control_value"
+        self._attr_translation_key = "control_value"
+        self._attr_device_info = {
+            "identifiers": {(DOMAIN, f"{dss_id}_zone_{zone_id}")},
+            "name": zone_info["name"],
+            "manufacturer": MANUFACTURER,
+            "model": "Zone",
+            "suggested_area": zone_info["name"],
+        }
+
+    @property
+    def native_value(self):
+        val = self.coordinator.get_control_value(self._zone_id)
+        return round(val, 1) if val is not None else None
 
     @callback
     def _handle_coordinator_update(self):
