@@ -244,6 +244,10 @@ Home Assistant gebruikt automatisch de juiste taal op basis van je systeemtaal. 
 
 ## Wijzigingslog
 
+### v4.1.3 (25-06-2026) — Joker-schakelaar: juiste status na opstarten
+
+- **Joker-actoren als schakelaar**: de status direct na het opstarten van de integratie is nu correct. Voorheen kon een actor vlak na de start ten onrechte als "aan" verschijnen omdat de beginstatus uit een onbetrouwbaar structuurveld kwam; deze wordt nu uit de werkelijke uitgangsstatus afgeleid (dezelfde bron als de status-poll). Aanvulling op v4.1.2.
+
 ### v4.1.2 (25-06-2026) — Joker-schakelaars volgen externe wijzigingen
 
 - **Joker-actoren als schakelaar (SW-ZWS200, SW-SSL200 e.d.)**: een aan/uit-wijziging die buiten Home Assistant om wordt gedaan (via de Digital Strom-app of een fysieke schakelaar) wordt nu correct in HA weergegeven. Voorheen werd de status alleen bijgewerkt bij bediening via de integratie zelf; externe wijzigingen werden gemist omdat de status-poll alleen binaire ingangen las en zuivere uitgangsactoren oversloeg. De status wordt nu ook uit de uitgangsstatus bijgewerkt, via dezelfde gecachte dSS-poll — dus zonder extra belasting van de dS485-bus.

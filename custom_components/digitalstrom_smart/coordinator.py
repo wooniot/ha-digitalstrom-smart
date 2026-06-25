@@ -248,6 +248,14 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
                     if bi and "state" in bi[0]:
                         bi_state = bi[0]["state"]
                         self._device_on_states[dsuid] = (bi_state == 1)
+                    elif int(dev_info.get("output_mode", 0) or 0) > 0:
+                        # Joker-ACTOR als switch: de structuur-`isOn` is onbetrouwbaar
+                        # (toont na opstart soms 'aan' terwijl de actor uit is). De echte
+                        # aan/uit is de OUTPUT-status. Initialiseer alleen als de structuur
+                        # die al meegeeft; anders zet de output-poll (draait bij setup,
+                        # regel ~321) de juiste waarde — voorkomt een foute begin-'aan'.
+                        if "on" in dev:
+                            self._device_on_states[dsuid] = bool(dev.get("on", False))
                     else:
                         self._device_on_states[dsuid] = dev_info.get("is_on", False) or False
 

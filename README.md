@@ -244,6 +244,10 @@ Home Assistant automatically uses the correct language based on your system lang
 
 ## Changelog
 
+### v4.1.3 (2026-06-25) — Joker switch: correct status after startup
+
+- **Joker actuators used as a switch**: the status right after the integration starts is now correct. Previously an actuator could wrongly appear "on" just after startup because the initial state came from an unreliable structure field; it is now derived from the actual output state (the same source as the status poll). Follow-up to v4.1.2.
+
 ### v4.1.2 (2026-06-25) — Joker switches track external changes
 
 - **Joker actuators used as a switch (SW-ZWS200, SW-SSL200, etc.)**: an on/off change made outside Home Assistant (via the Digital Strom app or a physical switch) is now reflected correctly in HA. Previously the state only updated when switched via the integration itself; external changes were missed because the state poll only read binary inputs and skipped pure output actuators. The state is now also updated from the output state, via the same cached dSS poll — so without extra dS485 bus load.

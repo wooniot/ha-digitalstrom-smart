@@ -236,6 +236,10 @@ Home Assistant verwendet automatisch die richtige Sprache basierend auf Ihrer Sy
 
 ## Änderungsprotokoll
 
+### v4.1.3 (25.06.2026) — Joker-Schalter: korrekter Status nach dem Start
+
+- **Joker-Aktoren als Schalter**: der Status direkt nach dem Start der Integration ist jetzt korrekt. Bisher konnte ein Aktor kurz nach dem Start fälschlich als „ein" erscheinen, weil der Anfangsstatus aus einem unzuverlässigen Strukturfeld stammte; er wird nun aus dem tatsächlichen Ausgangsstatus abgeleitet (dieselbe Quelle wie die Status-Abfrage). Ergänzung zu v4.1.2.
+
 ### v4.1.2 (25.06.2026) — Joker-Schalter folgen externen Änderungen
 
 - **Joker-Aktoren als Schalter (SW-ZWS200, SW-SSL200 usw.)**: eine Ein/Aus-Änderung, die ausserhalb von Home Assistant erfolgt (über die Digital-Strom-App oder einen physischen Schalter), wird jetzt korrekt in HA angezeigt. Bisher wurde der Status nur bei Bedienung über die Integration selbst aktualisiert; externe Änderungen wurden übersehen, weil die Status-Abfrage nur Binäreingänge las und reine Ausgangs-Aktoren übersprang. Der Status wird nun auch aus dem Ausgangsstatus aktualisiert, über dieselbe gecachte dSS-Abfrage — also ohne zusätzliche dS485-Buslast.
