@@ -461,10 +461,22 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
                     )
             # Only fetch status if zone has confirmed temp control
             if not self.has_temp_control(zone_id):
+                _LOGGER.debug(
+                    "Zone %d (%s) SKIP temp-control status: no temp_control "
+                    "(config=%s groups=%s temps=%s)",
+                    zone_id, zone_info["name"],
+                    self._climate_config.get(zone_id),
+                    self.zones.get(zone_id, {}).get("groups"),
+                    self._temperatures.get(zone_id),
+                )
                 continue
             try:
                 status = await self.api.get_temperature_control_status(zone_id)
                 self._climate_status[zone_id] = status
+                _LOGGER.debug(
+                    "Zone %d (%s) temp-control status: %s", zone_id,
+                    zone_info["name"], status,
+                )
             except DigitalStromApiError:
                 pass
 
