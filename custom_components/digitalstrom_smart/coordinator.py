@@ -825,25 +825,64 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
         return False
 
     def get_temperature(self, zone_id: int) -> float | None:
-        """Get target/nominal temperature for a zone."""
+        """Get target/nominal (setpoint) temperature for a zone.
+
+        Polled sources, in order — so the setpoint survives the gap between
+        Thanos stateChange events. Right after a heating/cooling changeover or a
+        restart the apartment temp-control values briefly read 0/None; the
+        per-zone status keeps working.
+        1. apartment getTemperatureControlValues (NominalValue)
+        2. per-zone getTemperatureControlStatus (NominalValue)
+        """
         data = self._temperatures.get(zone_id)
         if data and data.get("NominalValue", 0) > 0:
             return data["NominalValue"]
+        status = self._climate_status.get(zone_id)
+        if status and status.get("NominalValue", 0) > 0:
+            return status["NominalValue"]
+        return None
+
+    def _zone_device_temperature(self, zone_id: int) -> float | None:
+        """Temperature from any device sensor in the zone (polled)."""
+        zone_info = self.zones.get(zone_id, {})
+        for dsuid in zone_info.get("devices", []):
+            dev_sensors = self._device_sensor_values.get(dsuid, {})
+            if SENSOR_TEMPERATURE in dev_sensors:
+                return dev_sensors[SENSOR_TEMPERATURE]
         return None
 
     def get_current_temperature(self, zone_id: int) -> float | None:
-        """Get actual measured temperature for a zone."""
+        """Get actual measured temperature for a zone.
+
+        Tries every polled source so the value survives the gap between Thanos
+        stateChange events. After a changeover/restart the apartment temp-control
+        values briefly read 0/None, but the per-zone status, the apartment sensor
+        poll and the device sensors keep delivering a reading.
+        """
         data = self._temperatures.get(zone_id)
         if data:
             # Prefer TemperatureValue from getTemperatureControlValues
             tv = data.get("TemperatureValue")
             if tv and tv > 0:
                 return tv
-            # Fallback to sensor event data
+            # Sensor event data
             sv = data.get("sensorValue")
             if sv and sv > 0:
                 return sv
-        return None
+        # Per-zone getTemperatureControlStatus (polled each cycle)
+        status = self._climate_status.get(zone_id)
+        if status:
+            tv = status.get("TemperatureValue")
+            if tv and tv > 0:
+                return tv
+        # Apartment getSensorValues per-zone reading (polled)
+        zs = self._zone_sensors.get(zone_id)
+        if zs:
+            tv = zs.get("TemperatureValue")
+            if tv and tv > 0:
+                return tv
+        # Device temperature sensors in the zone (polled / events)
+        return self._zone_device_temperature(zone_id)
 
     def get_any_temperature(self, zone_id: int) -> float | None:
         """Get any available temperature for a zone (regardless of temp control).
@@ -851,18 +890,9 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
         Used for rooms that have a temperature sensor but no heating/temp control.
         Checks: TemperatureValue, sensorValue from events, device sensors.
         """
-        # First try coordinator temp data
-        temp = self.get_current_temperature(zone_id)
-        if temp is not None:
-            return temp
-
-        # Then try device sensors in this zone
-        zone_info = self.zones.get(zone_id, {})
-        for dsuid in zone_info.get("devices", []):
-            dev_sensors = self._device_sensor_values.get(dsuid, {})
-            if SENSOR_TEMPERATURE in dev_sensors:
-                return dev_sensors[SENSOR_TEMPERATURE]
-        return None
+        # get_current_temperature now already covers temp-control data, the
+        # per-zone status, the apartment sensor poll and device sensors.
+        return self.get_current_temperature(zone_id)
 
     def get_control_value(self, zone_id: int) -> float | None:
         """Get heating control output value (0-100%) for a zone."""

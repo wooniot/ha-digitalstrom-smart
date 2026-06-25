@@ -244,6 +244,10 @@ Home Assistant automatically uses the correct language based on your system lang
 
 ## Changelog
 
+### v4.1.1 (2026-06-25) — Reliable temperature & setpoint after changeover
+
+- **Measured temperature and setpoint stay available** — previously a climate zone's measured temperature and target setpoint could fall back to "unknown" after a heating/cooling changeover or a restart, until the Thanos thermostat pushed a fresh value. The integration now reads these from every polled source (the per-zone temperature-control status, the apartment sensor poll and the zone's device temperature sensors), not only from pushed events, so the climate entity and the temperature sensors show a value again immediately.
+
 ### v4.1.0 (2026-06-23) — Firmware-update resilience
 
 - **Auto re-authentication** — when the dSS app token becomes invalid (common after a dSS firmware update), Home Assistant now shows a *"Re-authentication required"* notification instead of silently failing setup. Approving a new token keeps the entry, Pro license and all entities — no delete-and-re-pair needed.

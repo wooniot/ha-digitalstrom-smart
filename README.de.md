@@ -236,6 +236,10 @@ Home Assistant verwendet automatisch die richtige Sprache basierend auf Ihrer Sy
 
 ## Änderungsprotokoll
 
+### v4.1.1 (25.06.2026) — Temperatur & Sollwert zuverlässig nach Umschaltung
+
+- **Gemessene Temperatur und Sollwert bleiben verfügbar** — bisher konnten die gemessene Temperatur und der Sollwert einer Klimazone nach einer Heiz-/Kühl-Umschaltung oder einem Neustart auf „unbekannt" fallen, bis der Thanos-Thermostat selbst einen neuen Wert sendete. Die Integration liest diese Werte jetzt aus allen Poll-Quellen (zonenweiser Temperaturregelungs-Status, Apartment-Sensorabfrage und die Geräte-Temperatursensoren der Zone) und nicht mehr nur aus gepushten Events. Die Climate-Entität und die Temperatursensoren zeigen dadurch sofort wieder einen Wert.
+
 ### v4.1.0 (23.06.2026) — Robust gegen Firmware-Updates
 
 - **Automatische erneute Authentifizierung** — wird das dSS-App-Token ungültig (häufig nach einem dSS-Firmware-Update), zeigt Home Assistant nun eine Meldung *"Erneute Authentifizierung erforderlich"*, statt die Einrichtung stillschweigend fehlschlagen zu lassen. Das Genehmigen eines neuen Tokens behält Eintrag, Pro-Lizenz und alle Entitäten — kein Löschen und erneutes Koppeln nötig.

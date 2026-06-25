@@ -244,6 +244,10 @@ Home Assistant gebruikt automatisch de juiste taal op basis van je systeemtaal. 
 
 ## Wijzigingslog
 
+### v4.1.1 (25-06-2026) — Temperatuur & setpoint betrouwbaar na changeover
+
+- **Gemeten temperatuur en setpoint blijven beschikbaar** — voorheen kon de gemeten temperatuur én de doeltemperatuur van een klimaatzone op "onbekend" vallen na een verwarmen/koelen-omschakeling of een herstart, totdat de Thanos-thermostaat zelf een nieuwe waarde stuurde. De integratie leest deze waarden nu uit álle poll-bronnen (de per-zone temperatuurregeling-status, de apartement-sensoruitlezing en de apparaat-temperatuursensoren in de zone) en niet meer alleen uit gepushte events. De climate-entiteit en de temperatuursensoren tonen daardoor direct weer een waarde.
+
 ### v4.1.0 (23-06-2026) — Bestendig tegen firmware-updates
 
 - **Automatische herauthenticatie** — wordt het dSS app-token ongeldig (gebruikelijk na een dSS firmware-update), dan toont Home Assistant nu een melding *"Herauthenticatie vereist"* in plaats van stil te falen bij setup. Een nieuw token goedkeuren behoudt de entry, Pro-licentie én alle entiteiten — opnieuw koppelen is niet nodig.
