@@ -179,11 +179,16 @@ async def async_setup_entry(
                     DigitalStromHeatingOutputSensor(coordinator, zone_id, zone_info)
                 )
             # Regelwaarde (signed): negatief = koelvraag, positief = verwarmvraag.
-            # ALTIJD aanmaken (niet gated op een waarde bij opstart) zodat 'ie ook
-            # in koelmodus verschijnt en vult zodra de dSS de waarde levert.
-            entities.append(
-                DigitalStromControlValueSensor(coordinator, zone_id, zone_info)
-            )
+            # Aanmaken voor échte klimaatzones (temp óf regelwaarde aanwezig) — zo
+            # verschijnt 'ie ook in koelmodus, maar NIET voor niet-klimaatzones die
+            # has_temp_control via een losse temperatuurmeting passeren.
+            if (
+                coordinator.get_current_temperature(zone_id) is not None
+                or coordinator.get_control_value(zone_id) is not None
+            ):
+                entities.append(
+                    DigitalStromControlValueSensor(coordinator, zone_id, zone_info)
+                )
         else:
             # Zone without temp control: show temperature if available from any source
             temp = coordinator.get_any_temperature(zone_id)
