@@ -361,6 +361,21 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
                 "output_mode": int(dev.get("outputMode", 0) or 0),
             }
 
+            # Joker-ACTOR als switch (SW-ZWS200/SW-SSL200 e.d.): aan/uit = de OUTPUT-status
+            # (dev["on"]), GEEN binary-input. De binary-input-lus hieronder slaat deze units
+            # over, waardoor extern (DS-app/schakelaar) gewijzigde standen nooit in HA kwamen.
+            # We werken _device_on_states nu ook bij vanuit de output, via dezelfde gecachte
+            # getDevices-poll — dus geen extra ds485-buslast.
+            if int(dev.get("outputMode", 0) or 0) > 0 and not bi:
+                on_state = bool(dev.get("on", False))
+                old_on = self._device_on_states.get(dsuid)
+                self._device_on_states[dsuid] = on_state
+                if old_on is not None and old_on != on_state:
+                    _LOGGER.info(
+                        "Joker-actor output CHANGED (extern): %s (%s) on=%s (was %s)",
+                        dsuid[:12], dev.get("name", ""), on_state, old_on,
+                    )
+
         # Log poll results for debugging (every poll cycle at debug level)
         binary_devices = {d: dev for d, dev in self.devices.items() if dev.get("binary_inputs")}
         if binary_devices:

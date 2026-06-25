@@ -244,6 +244,10 @@ Home Assistant automatically uses the correct language based on your system lang
 
 ## Changelog
 
+### v4.1.2 (2026-06-25) — Joker switches track external changes
+
+- **Joker actuators used as a switch (SW-ZWS200, SW-SSL200, etc.)**: an on/off change made outside Home Assistant (via the Digital Strom app or a physical switch) is now reflected correctly in HA. Previously the state only updated when switched via the integration itself; external changes were missed because the state poll only read binary inputs and skipped pure output actuators. The state is now also updated from the output state, via the same cached dSS poll — so without extra dS485 bus load.
+
 ### v4.1.1 (2026-06-25) — Reliable temperature & setpoint after changeover
 
 - **Measured temperature and setpoint stay available** — previously a climate zone's measured temperature and target setpoint could fall back to "unknown" after a heating/cooling changeover or a restart, until the Thanos thermostat pushed a fresh value. The integration now reads these from every polled source (the per-zone temperature-control status, the apartment sensor poll and the zone's device temperature sensors), not only from pushed events, so the climate entity and the temperature sensors show a value again immediately.

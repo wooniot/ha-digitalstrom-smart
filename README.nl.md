@@ -244,6 +244,10 @@ Home Assistant gebruikt automatisch de juiste taal op basis van je systeemtaal. 
 
 ## Wijzigingslog
 
+### v4.1.2 (25-06-2026) — Joker-schakelaars volgen externe wijzigingen
+
+- **Joker-actoren als schakelaar (SW-ZWS200, SW-SSL200 e.d.)**: een aan/uit-wijziging die buiten Home Assistant om wordt gedaan (via de Digital Strom-app of een fysieke schakelaar) wordt nu correct in HA weergegeven. Voorheen werd de status alleen bijgewerkt bij bediening via de integratie zelf; externe wijzigingen werden gemist omdat de status-poll alleen binaire ingangen las en zuivere uitgangsactoren oversloeg. De status wordt nu ook uit de uitgangsstatus bijgewerkt, via dezelfde gecachte dSS-poll — dus zonder extra belasting van de dS485-bus.
+
 ### v4.1.1 (25-06-2026) — Temperatuur & setpoint betrouwbaar na changeover
 
 - **Gemeten temperatuur en setpoint blijven beschikbaar** — voorheen kon de gemeten temperatuur én de doeltemperatuur van een klimaatzone op "onbekend" vallen na een verwarmen/koelen-omschakeling of een herstart, totdat de Thanos-thermostaat zelf een nieuwe waarde stuurde. De integratie leest deze waarden nu uit álle poll-bronnen (de per-zone temperatuurregeling-status, de apartement-sensoruitlezing en de apparaat-temperatuursensoren in de zone) en niet meer alleen uit gepushte events. De climate-entiteit en de temperatuursensoren tonen daardoor direct weer een waarde.

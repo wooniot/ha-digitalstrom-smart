@@ -236,6 +236,10 @@ Home Assistant verwendet automatisch die richtige Sprache basierend auf Ihrer Sy
 
 ## Änderungsprotokoll
 
+### v4.1.2 (25.06.2026) — Joker-Schalter folgen externen Änderungen
+
+- **Joker-Aktoren als Schalter (SW-ZWS200, SW-SSL200 usw.)**: eine Ein/Aus-Änderung, die ausserhalb von Home Assistant erfolgt (über die Digital-Strom-App oder einen physischen Schalter), wird jetzt korrekt in HA angezeigt. Bisher wurde der Status nur bei Bedienung über die Integration selbst aktualisiert; externe Änderungen wurden übersehen, weil die Status-Abfrage nur Binäreingänge las und reine Ausgangs-Aktoren übersprang. Der Status wird nun auch aus dem Ausgangsstatus aktualisiert, über dieselbe gecachte dSS-Abfrage — also ohne zusätzliche dS485-Buslast.
+
 ### v4.1.1 (25.06.2026) — Temperatur & Sollwert zuverlässig nach Umschaltung
 
 - **Gemessene Temperatur und Sollwert bleiben verfügbar** — bisher konnten die gemessene Temperatur und der Sollwert einer Klimazone nach einer Heiz-/Kühl-Umschaltung oder einem Neustart auf „unbekannt" fallen, bis der Thanos-Thermostat selbst einen neuen Wert sendete. Die Integration liest diese Werte jetzt aus allen Poll-Quellen (zonenweiser Temperaturregelungs-Status, Apartment-Sensorabfrage und die Geräte-Temperatursensoren der Zone) und nicht mehr nur aus gepushten Events. Die Climate-Entität und die Temperatursensoren zeigen dadurch sofort wieder einen Wert.
