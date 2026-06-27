@@ -869,12 +869,19 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
         1. apartment getTemperatureControlValues (NominalValue)
         2. per-zone getTemperatureControlStatus (NominalValue)
         """
+        # NominalValue can be *present but None* (the dSS sends it explicitly as
+        # null right after a restart/power outage, as the docstring notes). In
+        # that case dict.get(key, 0) returns None, not the default, so the bare
+        # `> 0` comparison raises TypeError. Guard the type to fall through to
+        # the next source instead of crashing.
         data = self._temperatures.get(zone_id)
-        if data and data.get("NominalValue", 0) > 0:
-            return data["NominalValue"]
+        nominal = data.get("NominalValue") if data else None
+        if isinstance(nominal, (int, float)) and nominal > 0:
+            return nominal
         status = self._climate_status.get(zone_id)
-        if status and status.get("NominalValue", 0) > 0:
-            return status["NominalValue"]
+        nominal = status.get("NominalValue") if status else None
+        if isinstance(nominal, (int, float)) and nominal > 0:
+            return nominal
         return None
 
     def _zone_device_temperature(self, zone_id: int) -> float | None:
