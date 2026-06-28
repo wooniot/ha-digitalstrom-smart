@@ -23,6 +23,7 @@ from .const import (
     PLATFORMS_PRO,
     CONF_APP_TOKEN,
     CONF_DSS_ID,
+    CONF_ENABLED_ZONES,
     CONF_PRO_LICENSE,
 )
 from .coordinator import DigitalStromCoordinator
@@ -75,6 +76,31 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     except DigitalStromApiError as err:
         await api.close()
         raise ConfigEntryNotReady(f"Cannot read structure from dSS: {err}") from err
+
+    # Auto-enable zones created in the dSS after initial setup (#28).
+    # CONF_ENABLED_ZONES is a snapshot taken at first setup; a zone added later
+    # is not in that list, so the platforms filter it out and a plain reload
+    # never shows the new room. Merge any newly discovered zone ids into the
+    # enabled list here, before the platforms are set up. An empty list already
+    # means "all zones enabled", so only top up a non-empty (subset) list.
+    enabled_zones = list(entry.data.get(CONF_ENABLED_ZONES, []))
+    if enabled_zones:
+        apartment = structure.get("apartment", structure)
+        all_zone_ids = [
+            z.get("id", 0)
+            for z in apartment.get("zones", [])
+            if 0 < z.get("id", 0) < 65534
+        ]
+        new_zones = [z for z in all_zone_ids if z not in enabled_zones]
+        if new_zones:
+            _LOGGER.info(
+                "Discovered %d new dSS zone(s) since setup, enabling them: %s",
+                len(new_zones), new_zones,
+            )
+            hass.config_entries.async_update_entry(
+                entry,
+                data={**entry.data, CONF_ENABLED_ZONES: enabled_zones + new_zones},
+            )
 
     # Create coordinator
     dss_id = entry.data.get(CONF_DSS_ID, "")
