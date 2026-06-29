@@ -223,6 +223,18 @@ SCENE_AREA4_2 = 32
 SCENE_AREA4_3 = 33
 SCENE_AREA4_4 = 34
 
+# --- dS Area aan/uit-scenes voor zone is_on-detectie ---
+# BEVESTIGD met velddata (Urs Frischknecht, GitHub #26, 28 jun 2026):
+# de fysieke schakelaar stuurt per area een ON- en een OFF-scene:
+#   Area 1 aan = 6, uit = 1 | Area 2 aan = 7, uit = 2
+#   Area 3 aan = 8, uit = 3 | Area 4 aan = 9, uit = 4
+# (scene 0 = hele zone uit, 5 = hele zone aan / preset 1.)
+# LET OP: de SCENE_AREA*-constanten hierboven (6/10/20/30) zijn een ANDERE,
+# foutieve nummering en worden alleen voor scene-NAAMGEVING gebruikt — NOOIT
+# voor aan/uit. Gebruik voor is_on uitsluitend onderstaande maps.
+AREA_ON_SCENES = {6: 1, 7: 2, 8: 3, 9: 4}   # scene -> area-index (area aan)
+AREA_OFF_SCENES = {1: 1, 2: 2, 3: 3, 4: 4}  # scene -> area-index (area uit)
+
 # All zone-level scene numbers that can be user-configured
 # Excludes apartment-wide scenes (65+) which are handled separately
 ALL_ZONE_SCENES = [

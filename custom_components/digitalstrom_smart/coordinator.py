@@ -34,6 +34,8 @@ from .const import (
     SCENE_2,
     SCENE_3,
     SCENE_4,
+    AREA_ON_SCENES,
+    AREA_OFF_SCENES,
     ALL_ZONE_SCENES,
     NAMED_SCENES,
     NAMED_SCENES_SHADE,
@@ -102,6 +104,11 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
 
         # State tracking: {(zone_id, group): {"scene": int, "value": int, "is_on": bool}}
         self._zone_states: dict[tuple[int, int], dict[str, Any]] = {}
+        # Area-besef voor zone is_on (#26): welke areas binnen een zone aan staan,
+        # en of de zone via een hele-zone-preset aan is gezet. Een DS area-uit-scene
+        # (1-4) zet maar één area uit -> de zone is pas echt uit als alle areas uit zijn.
+        self._zone_areas_on: dict[tuple[int, int], set[int]] = {}
+        self._zone_broadcast_on: dict[tuple[int, int], bool] = {}
 
         # Sensor data
         self._consumption: int = 0
@@ -317,7 +324,7 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
                 try:
                     scene = await self.api.get_last_called_scene(zone_id, group)
                     if scene >= 0:
-                        is_on = scene != SCENE_OFF
+                        is_on = self.zone_on_after_scene(zone_id, group, scene)
                         self.set_zone_state(zone_id, group, scene=scene, is_on=is_on)
                 except Exception as err:
                     _LOGGER.debug(
@@ -1094,6 +1101,36 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
         """Get a device sensor value by type."""
         return self._device_sensor_values.get(dsuid, {}).get(sensor_type)
 
+    def zone_on_after_scene(self, zone_id: int, group: int, scene: int) -> bool:
+        """Bepaal of een zone 'aan' is na een callScene, met area-besef (#26).
+
+        DS stuurt bij het uitschakelen van één area een area-uit-scene (1-4); dat
+        zet maar dat ene area uit. De vroegere logica (is_on = scene != 0) zag die
+        scenes als 'aan' -> lamp bleef in HA hangen. Nu:
+          - scene 0 (SCENE_OFF): hele zone uit;
+          - area-aan (6-9): dat area aan -> zone aan;
+          - area-uit (1-4): dat area uit -> zone uit zodra ALLE bekende areas uit
+            zijn (tenzij de zone via een preset 'broadcast'-aan staat);
+          - elke andere scene (presets): hele zone aan.
+        Bij twijfel (area-uit terwijl niets getrackt is) valt 'aan' terug op het
+        broadcast-vlag -> nooit een regressie t.o.v. het oude gedrag.
+        """
+        key = (zone_id, group)
+        if scene == SCENE_OFF:
+            self._zone_areas_on[key] = set()
+            self._zone_broadcast_on[key] = False
+            return False
+        if scene in AREA_ON_SCENES:
+            self._zone_areas_on.setdefault(key, set()).add(AREA_ON_SCENES[scene])
+            return True
+        if scene in AREA_OFF_SCENES:
+            areas = self._zone_areas_on.setdefault(key, set())
+            areas.discard(AREA_OFF_SCENES[scene])
+            return bool(areas) or self._zone_broadcast_on.get(key, False)
+        # Elke andere scene = hele-zone-preset -> aan
+        self._zone_broadcast_on[key] = True
+        return True
+
     def get_zone_state(self, zone_id: int, group: int) -> dict[str, Any]:
         return self._zone_states.get((zone_id, group), {"scene": None, "value": None})
 
@@ -1441,7 +1478,10 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
                 return
 
             if zone_id > 0:
-                is_on = scene != SCENE_OFF if name == "callScene" else True
+                if name == "callScene":
+                    is_on = self.zone_on_after_scene(zone_id, group, scene)
+                else:  # undoScene = terug naar vorige stand -> behandel als aan
+                    is_on = True
                 self.set_zone_state(zone_id, group, scene=scene, is_on=is_on)
 
                 # Update individual device states for Joker group scenes
