@@ -155,6 +155,10 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
 
         # Climate data (PRO)
         self._climate_status: dict[int, dict] = {}  # zone_id -> status
+        # Zones die ooit temp-control bleken → blijven gepolld, ook als de dSS
+        # in koelmodus ControlMode=0 teruggeeft (anders verdwijnt de regelwaarde/
+        # setpoint zodra het systeem naar koelen schakelt).
+        self._temp_control_zones: set[int] = set()
         self._climate_config: dict[int, dict] = {}  # zone_id -> config
 
         # Apartment-wide state (PRO)
@@ -843,28 +847,34 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
            GROUP_COOLING (9) always mean temperature control, regardless of mode
         3. Temperature values (TemperatureValue / NominalValue) as last resort
         """
+        # Memoize: eenmaal-klimaatzone = blijft-klimaatzone. Zo blijft de per-zone
+        # status (incl. ControlValue/regelwaarde) gepolld nadat de dSS naar koelen
+        # schakelt (waar getTemperatureControlConfig2 ControlMode=0 teruggeeft).
+        if zone_id in self._temp_control_zones:
+            return True
+
+        result = False
         # Primary: climate config present = has temp control
-        config = self._climate_config.get(zone_id)
-        if config:
-            return True
+        if self._climate_config.get(zone_id):
+            result = True
+        else:
+            # Reliable fallback: zone groups from dSS structure (available at
+            # startup, independent of API calls that may fail in cooling mode)
+            groups = self.zones.get(zone_id, {}).get("groups", set())
+            if groups & {GROUP_TEMP_CONTROL, GROUP_COOLING}:
+                result = True
+            else:
+                # Last resort: temperature values (periodic poll / pre-fetch)
+                data = self._temperatures.get(zone_id)
+                if data:
+                    tv = data.get("TemperatureValue")
+                    nv = data.get("NominalValue")
+                    if (tv is not None and tv > 0) or (nv is not None and nv > 0):
+                        result = True
 
-        # Reliable fallback: zone groups from dSS structure (available at startup,
-        # independent of API calls that may fail in cooling mode)
-        zone_info = self.zones.get(zone_id, {})
-        groups = zone_info.get("groups", set())
-        if groups & {GROUP_TEMP_CONTROL, GROUP_COOLING}:
-            return True
-
-        # Last resort: temperature values (populated by periodic poll or pre-fetch)
-        data = self._temperatures.get(zone_id)
-        if data:
-            tv = data.get("TemperatureValue")
-            if tv is not None and tv > 0:
-                return True
-            nv = data.get("NominalValue")
-            if nv is not None and nv > 0:
-                return True
-        return False
+        if result:
+            self._temp_control_zones.add(zone_id)
+        return result
 
     def get_temperature(self, zone_id: int) -> float | None:
         """Get target/nominal (setpoint) temperature for a zone.
