@@ -160,6 +160,13 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
         # setpoint zodra het systeem naar koelen schakelt).
         self._temp_control_zones: set[int] = set()
         self._climate_config: dict[int, dict] = {}  # zone_id -> config
+        # Fallback voor "off met vaste regelwaarden": als de dSS-temperatuurregeling
+        # op mode 'off' staat geeft getTemperatureControlStatus geen ControlValue,
+        # maar getTemperatureControlConfig2.fixedValues[actieve toestand] wél (dat
+        # toont de dSS System-tab, bv. -100% koelvraag). We cachen die tabel +
+        # de actieve temp-regel-scène (groep 48) om de vloer-regelwaarde te tonen.
+        self._fixed_values: dict[int, dict] = {}   # zone_id -> {mode-index: value}
+        self._tempcontrol_scene: dict[int, int] = {}  # zone_id -> laatste groep-48 scène
 
         # Apartment-wide state (PRO)
         self._apartment_presence: int | None = None  # current presence scene nr
@@ -465,11 +472,25 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
                     control_mode = config.get("ControlMode", config.get("mode", ""))
                     if _is_climate_control_active(control_mode):
                         self._climate_config[zone_id] = config
+                    # Bewaar fixedValues (ook in off-modus) voor de fallback hieronder.
+                    fixed = config.get("fixedValues")
+                    if isinstance(fixed, dict) and fixed:
+                        self._fixed_values[zone_id] = fixed
                 except DigitalStromApiError as err:
                     _LOGGER.debug(
                         "Zone %d (%s) no climate config: %s",
                         zone_id, zone_info["name"], err,
                     )
+            # Actieve temp-regel-scène (groep 48) voor zones met vaste regelwaarden —
+            # nodig om fixedValues[actieve toestand] als vloer-regelwaarde te tonen
+            # wanneer de dSS-regeling op 'off' staat (ControlValue dan leeg).
+            if zone_id in self._fixed_values:
+                try:
+                    self._tempcontrol_scene[zone_id] = (
+                        await self.api.get_last_called_scene(zone_id, GROUP_TEMP_CONTROL)
+                    )
+                except DigitalStromApiError:
+                    pass
             # Only fetch status if zone has confirmed temp control
             if not self.has_temp_control(zone_id):
                 _LOGGER.debug(
@@ -958,6 +979,20 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
         status = self._climate_status.get(zone_id)
         if status and status.get("ControlValue") is not None:
             return status["ControlValue"]
+        # Fallback: dSS-regeling op 'off met vaste regelwaarden' → geen ControlValue,
+        # maar wél fixedValues[actieve toestand]. De actieve toestand = laatste scène
+        # op de temp-regelgroep (48). Mapping: verwarmscènes 1-5 → index 1-5;
+        # koelscènes 6-9 → index 10-13 (scène 6 = koel-comfort = bv. -100%).
+        fixed = self._fixed_values.get(zone_id)
+        scene = self._tempcontrol_scene.get(zone_id)
+        if fixed and scene is not None:
+            index = scene if scene <= 5 else scene + 4
+            val = fixed.get(str(index), fixed.get(index))
+            if val is not None:
+                try:
+                    return float(val)
+                except (TypeError, ValueError):
+                    return None
         return None
 
     def get_climate_status(self, zone_id: int) -> dict | None:
