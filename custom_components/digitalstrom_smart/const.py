@@ -9,7 +9,7 @@ MANUFACTURER = "Digital Strom"
 INTEGRATION_AUTHOR = "Woon IoT BV"
 INTEGRATION_AUTHOR_ID = "MN-HJD-2026"
 INTEGRATION_URL = "https://github.com/wooniot/ha-digitalstrom-smart"
-INTEGRATION_VERSION = "4.1.9"
+INTEGRATION_VERSION = "4.2.0"
 
 # Application name shown in dSS Configurator under registered applications
 DSS_APP_NAME = "WoonIoT HA Connect"
@@ -467,13 +467,36 @@ CONF_PRO_LICENSE = "pro_license_key"
 
 # --- Platforms ---
 # Free platforms (always loaded)
-PLATFORMS_FREE = ["light", "cover", "sensor", "scene", "switch", "binary_sensor", "button"]
+PLATFORMS_FREE = ["light", "cover", "sensor", "scene", "switch", "binary_sensor", "button", "event"]
 
 # Pro platforms (requires license)
 PLATFORMS_PRO = ["climate", "select"]
 
 # All platforms
 PLATFORMS = PLATFORMS_FREE + PLATFORMS_PRO
+
+
+# --- Button / rocker press events (event platform) ---
+# dSS functionIDs identifying pushbutton / rocker devices that emit `buttonClick`
+# events. 33030 = EnOcean rocker switch (F6-02-FF). `buttonInputs` is not
+# reliably populated for bridged plan44/EnOcean rockers, so we key off functionID.
+BUTTON_FUNCTION_IDS = {33030}
+
+# dSS clickType -> readable HA event-type suffix.
+BUTTON_CLICK_TYPE_NAMES = {
+    0: "single", 1: "double", 2: "triple", 3: "quadruple",
+    4: "hold", 5: "hold_repeat", 6: "hold_release",
+    7: "single", 8: "double", 9: "triple",
+    10: "short_long", 11: "local_off", 12: "local_on",
+    13: "short_short_long", 14: "local_stop",
+}
+# dSS buttonIndex (buttonElementID) -> readable HA event-type prefix.
+BUTTON_ELEMENT_NAMES = {0: "button", 1: "down", 2: "up"}
+
+
+def signal_button_event(entry_id: str) -> str:
+    """Dispatcher signal carrying a dSS buttonClick for one config entry."""
+    return f"{DOMAIN}_button_event_{entry_id}"
 
 # --- User Defined States ---
 # State source that marks an entry as a true User Defined Action (set in dSS Configurator)

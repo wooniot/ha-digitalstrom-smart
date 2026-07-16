@@ -11,6 +11,7 @@ from datetime import timedelta
 from typing import Any
 
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .api import DigitalStromApi, DigitalStromApiError, DigitalStromAuthError
@@ -19,6 +20,8 @@ import aiohttp
 
 from .const import (
     DOMAIN,
+    BUTTON_FUNCTION_IDS,
+    signal_button_event,
     POLL_INTERVAL_ENERGY,
     POLL_INTERVAL_BINARY,
     RECONNECT_INITIAL,
@@ -181,6 +184,18 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
         self.entry_id: str | None = None
         self._license_last_check: float = 0.0
 
+    def button_devices(self) -> dict[str, dict]:
+        """Devices that emit dSS ``buttonClick`` events (rockers / pushbuttons).
+
+        Identified by dSS ``functionID`` because ``buttonInputs`` is not reliably
+        populated for bridged plan44/EnOcean rocker devices. Keyed by dSUID.
+        """
+        return {
+            dsuid: dev
+            for dsuid, dev in self.devices.items()
+            if dev.get("function_id") in BUTTON_FUNCTION_IDS
+        }
+
     def _parse_structure(self, structure: dict) -> None:
         """Parse apartment structure into zone and device dicts."""
         apartment = structure.get("apartment", structure)
@@ -231,6 +246,7 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
                     "hw_info": dev.get("hwInfo", ""),
                     "is_on": dev.get("isOn", False),
                     "output_mode": dev.get("outputMode", 0),
+                    "function_id": dev.get("functionID"),
                     "binary_inputs": dev.get("binaryInputs", []),
                     "groups": [],
                     "sensors": [],
@@ -1461,6 +1477,21 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
                 "Raw stateChange event: raw_props_type=%s props=%s",
                 type(raw_props).__name__, props,
             )
+
+        if name == "buttonClick":
+            source = event.get("source") or {}
+            dsuid = source.get("dsid") or source.get("dSUID") or ""
+            if dsuid and self.entry_id:
+                async_dispatcher_send(
+                    self.hass,
+                    signal_button_event(self.entry_id),
+                    {
+                        "dsuid": dsuid,
+                        "button_index": props.get("buttonIndex"),
+                        "click_type": props.get("clickType"),
+                    },
+                )
+            return
 
         if name in ("callScene", "undoScene"):
             zone_id = int(props.get("zoneID", 0))

@@ -31,7 +31,7 @@ from .license import check_pro_license as _check_pro_license, sync_pro_issue
 
 # Pre-import all platform modules to avoid blocking imports in event loop (HA 2026+)
 from . import (  # noqa: F401
-    light, cover, sensor, scene, switch, climate, binary_sensor, select, button,
+    light, cover, sensor, scene, switch, climate, binary_sensor, select, button, event,
 )
 
 _LOGGER = logging.getLogger(__name__)
