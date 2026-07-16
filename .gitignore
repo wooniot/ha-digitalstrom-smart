@@ -12,3 +12,6 @@ __pycache__/
 *.credential*
 .ssh/
 .git-credentials
+.rene_watch_uid
+.rene_watch_plan.md
+.rene_watch_lastuid
