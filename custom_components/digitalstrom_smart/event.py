@@ -1,9 +1,16 @@
 """Event entities for Digital Strom button / rocker presses.
 
-Each dS pushbutton or EnOcean rocker (identified by functionID) becomes an
-``event`` entity that fires when the physical button is pressed. Driven by the
-dSS ``buttonClick`` event stream, delivered in real time through the coordinator
-event loop — no polling.
+Every dS pushbutton or EnOcean rocker becomes an ``event`` entity that fires
+when the physical button is pressed, driven by the dSS ``buttonClick`` event
+stream (real time, via the coordinator event loop — no polling).
+
+Discovery is twofold:
+  * up front, devices whose dSS functionID marks them as a rocker/button
+    (``BUTTON_FUNCTION_IDS``) so their entities exist immediately after start,
+    plus any button entity already in the registry from a previous run;
+  * dynamically, the first time a ``buttonClick`` arrives for a device we have
+    not seen yet — this covers every other dS pushbutton type automatically
+    without maintaining a functionID allow-list.
 """
 
 import logging
@@ -11,6 +18,7 @@ import logging
 from homeassistant.components.event import EventDeviceClass, EventEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
@@ -24,6 +32,8 @@ from .const import (
 from .coordinator import DigitalStromCoordinator
 
 _LOGGER = logging.getLogger(__name__)
+
+_UNIQUE_PREFIX = "button_"
 
 # Every event type an entity may fire: each element prefix x each click-name
 # suffix, plus a fallback for click types we do not map.
@@ -56,13 +66,49 @@ async def async_setup_entry(
 ) -> None:
     """Set up Digital Strom button event entities."""
     coordinator: DigitalStromCoordinator = hass.data[DOMAIN][entry.entry_id]["coordinator"]
-    entities = [
-        DigitalStromButtonEvent(coordinator, entry.entry_id, dsuid, dev)
-        for dsuid, dev in coordinator.button_devices().items()
-    ]
+    dss_id = coordinator.dss_id
+    uid_prefix = f"ds_{dss_id}_{_UNIQUE_PREFIX}"
+    known: set[str] = set()
+
+    def _make(dsuid: str, initial: dict | None = None) -> "DigitalStromButtonEvent":
+        known.add(dsuid.lower())
+        dev = coordinator.devices.get(dsuid) or coordinator.devices.get(dsuid.lower()) or {}
+        return DigitalStromButtonEvent(coordinator, entry.entry_id, dsuid, dev, initial)
+
+    entities: list[DigitalStromButtonEvent] = []
+
+    # 1. Up-front: devices whose functionID marks them as a button/rocker.
+    for dsuid in coordinator.button_devices():
+        entities.append(_make(dsuid))
+
+    # 2. Restore any button entity discovered on a previous run so it survives a
+    #    restart before its next press.
+    ent_reg = er.async_get(hass)
+    for entity in er.async_entries_for_config_entry(ent_reg, entry.entry_id):
+        if entity.domain == "event" and entity.unique_id.startswith(uid_prefix):
+            dsuid = entity.unique_id[len(uid_prefix):]
+            if dsuid.lower() not in known:
+                entities.append(_make(dsuid))
+
     if entities:
         _LOGGER.info("Adding %d Digital Strom button event entities", len(entities))
     async_add_entities(entities)
+
+    # 3. Dynamic discovery: first buttonClick from an unknown device -> new entity.
+    @callback
+    def _discover(payload: dict) -> None:
+        raw = payload.get("dsuid") or ""
+        if not raw or raw.lower() in known:
+            return
+        _LOGGER.info(
+            "Discovered new Digital Strom button device %s (%s)",
+            raw, (coordinator.devices.get(raw) or {}).get("name") or "?",
+        )
+        async_add_entities([_make(raw, initial=payload)])
+
+    entry.async_on_unload(
+        async_dispatcher_connect(hass, signal_button_event(entry.entry_id), _discover)
+    )
 
 
 class DigitalStromButtonEvent(EventEntity):
@@ -81,11 +127,13 @@ class DigitalStromButtonEvent(EventEntity):
         entry_id: str,
         dsuid: str,
         dev: dict,
+        initial: dict | None = None,
     ) -> None:
         self._entry_id = entry_id
         self._dsuid = dsuid.lower()
+        self._initial = initial
         dss_id = coordinator.dss_id
-        self._attr_unique_id = f"ds_{dss_id}_button_{dsuid}"
+        self._attr_unique_id = f"ds_{dss_id}_{_UNIQUE_PREFIX}{dsuid}"
         self._attr_device_info = {
             "identifiers": {(DOMAIN, dsuid)},
             "name": dev.get("name") or dsuid,
@@ -103,6 +151,11 @@ class DigitalStromButtonEvent(EventEntity):
                 self._handle_button_event,
             )
         )
+        # If this entity was created by the dynamic-discovery press, fire that
+        # first event now (it arrived before we were listening).
+        if self._initial is not None:
+            initial, self._initial = self._initial, None
+            self._handle_button_event(initial)
 
     @callback
     def _handle_button_event(self, payload: dict) -> None:
