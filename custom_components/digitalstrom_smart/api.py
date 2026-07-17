@@ -961,6 +961,7 @@ class DigitalStromApi:
         event_names = [
             "callScene",
             "undoScene",
+            "buttonClick",
             "zoneSensorValue",
             "stateChange",
             "addonStateChange",   # user-defined states (system-addon-user-defined-states)
