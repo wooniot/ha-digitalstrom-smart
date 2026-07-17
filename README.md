@@ -42,6 +42,7 @@ Unlike traditional per-device polling integrations, Digital Strom Smart uses the
 - **System scene switches** — trigger Panic, Fire/Brand, Alarm 1-4 and Doorbell apartment-wide from HA as switches (via `apartment/callScene`); each switch reads the real dSS state back, so it returns to off by itself if the dSS ignores the scene
 - **Environment states** — Day/Night, Twilight, Daylight and Holiday from the dSS as read-only binary sensors
 - **Event-driven** — instant state updates when someone uses a wall switch
+- **Button / rocker events** — dS pushbuttons and EnOcean rockers appear as `event` entities that fire on a physical press (event types for tap / double / hold per paddle), so a wall button can trigger HA automations directly
 - **Scenes for all groups** — Light, Shade, and Heating scenes
 
 ### Pro
@@ -131,6 +132,9 @@ For each zone with devices:
 Individual Joker devices:
 - `switch.<zone>_<device_name>` — Per-device on/off control (actuators with outputMode > 0)
 - `binary_sensor.<zone>_<device_name>` — Contact/smoke/door sensors (devices with outputMode == 0)
+
+Buttons / rockers:
+- `event.<button_name>` — fires on a physical dS pushbutton / EnOcean rocker press (device class `button`; event types like `up_single`, `down_single`, `up_hold`, derived from the dSS `buttonClick`). Devices that emit a `buttonClick` are picked up automatically on first press; buttons configured to call a scene (which emit `callScene` instead, with no per-device source) are not exposed individually.
 
 Device-level sensors (Ulux, etc.):
 - `sensor.<zone>_<device>_temperature` — Device temperature
