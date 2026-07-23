@@ -120,8 +120,14 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
         self._device_sensor_values: dict[str, dict[int, float]] = {}
         self._last_power_poll: float = 0.0  # throttle SW-series power refresh to 30s
 
-        # Per-device on/off state tracking (for individual Joker switches)
-        self._device_on_states: dict[str, bool] = {}  # dsuid -> is_on
+        # Per-device on/off state tracking.
+        # _device_on_states  = de OUTPUT/relais-stand van een Joker-ACTOR (leest de switch).
+        # _device_input_states = de BINAIRE-INGANG-stand (leest de binary_sensor).
+        # Ze zijn gescheiden zodat een Joker-actor MET ingang (bv. SW-KL200) niet twee
+        # betekenissen in één slot propt — anders overschrijft de ingang na herstart de
+        # relais-stand (switch toont 'aan' terwijl uit) en andersom na een scene-wissel.
+        self._device_on_states: dict[str, bool] = {}  # dsuid -> output on/off (switch)
+        self._device_input_states: dict[str, bool] = {}  # dsuid -> binary input active (sensor)
         # Per-device runtime output status from apartment/getDevices: {dsuid: {"on", "is_present", "is_valid"}}
         self._device_runtime: dict[str, dict] = {}
 
@@ -260,21 +266,21 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
 
                 # Initialize device on/off state from structure
                 if GROUP_JOKER in dev_info["groups"]:
-                    # For binary input devices: use binaryInputs[0].state from structure
-                    # dSS state values: 1=active, 2=inactive (NOT 0/1!)
+                    om = int(dev_info.get("output_mode", 0) or 0)
                     bi = dev_info.get("binary_inputs", [])
+                    # Binaire ingang → INPUT-slot (leest de binary_sensor).
+                    # dSS state values: 1=active, 2=inactive (NOT 0/1!)
                     if bi and "state" in bi[0]:
-                        bi_state = bi[0]["state"]
-                        self._device_on_states[dsuid] = (bi_state == 1)
-                    elif int(dev_info.get("output_mode", 0) or 0) > 0:
-                        # Joker-ACTOR als switch: de structuur-`isOn` is onbetrouwbaar
-                        # (toont na opstart soms 'aan' terwijl de actor uit is). De echte
-                        # aan/uit is de OUTPUT-status. Initialiseer alleen als de structuur
-                        # die al meegeeft; anders zet de output-poll (draait bij setup,
-                        # regel ~321) de juiste waarde — voorkomt een foute begin-'aan'.
+                        self._device_input_states[dsuid] = (bi[0]["state"] == 1)
+                    # Aan/uit van de ACTOR (switch) → OUTPUT-slot, ALTIJD uit de relais-
+                    # output (dev["on"]), NOOIT uit de ingang. De structuur-`isOn` is
+                    # onbetrouwbaar na opstart; ontbreekt "on", dan zet de output-poll
+                    # (draait bij setup) de juiste waarde — voorkomt een foute begin-'aan'.
+                    if om > 0:
                         if "on" in dev:
                             self._device_on_states[dsuid] = bool(dev.get("on", False))
-                    else:
+                    elif not bi:
+                        # geen output én geen ingang (wandknop e.d.) → val terug op isOn
                         self._device_on_states[dsuid] = dev_info.get("is_on", False) or False
 
     # =====================================================================
@@ -387,12 +393,12 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
                 "output_mode": int(dev.get("outputMode", 0) or 0),
             }
 
-            # Joker-ACTOR als switch (SW-ZWS200/SW-SSL200 e.d.): aan/uit = de OUTPUT-status
-            # (dev["on"]), GEEN binary-input. De binary-input-lus hieronder slaat deze units
-            # over, waardoor extern (DS-app/schakelaar) gewijzigde standen nooit in HA kwamen.
-            # We werken _device_on_states nu ook bij vanuit de output, via dezelfde gecachte
-            # getDevices-poll — dus geen extra ds485-buslast.
-            if int(dev.get("outputMode", 0) or 0) > 0 and not bi:
+            # Joker-ACTOR als switch (SW-ZWS200/SW-SSL200/SW-KL200 e.d.): aan/uit = de
+            # OUTPUT-status (dev["on"]). Werkt ook voor een actor MÉT binaire ingang: die
+            # ingang gaat naar het aparte _device_input_states-slot (de binary-input-lus
+            # hieronder), zodat hij de relais-stand hier niet overschrijft. Via dezelfde
+            # gecachte getDevices-poll — geen extra ds485-buslast.
+            if int(dev.get("outputMode", 0) or 0) > 0:
                 on_state = bool(dev.get("on", False))
                 old_on = self._device_on_states.get(dsuid)
                 self._device_on_states[dsuid] = on_state
@@ -422,10 +428,10 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
                     list(all_states.keys())[:5] if not all_states.get(dsuid) else "matched",
                 )
                 continue
-            # dSS binary input: 1=active, 2=inactive
+            # dSS binary input: 1=active, 2=inactive → INPUT-slot (leest de binary_sensor)
             is_active = (bi_state == 1)
-            old_state = self._device_on_states.get(dsuid)
-            self._device_on_states[dsuid] = is_active
+            old_state = self._device_input_states.get(dsuid)
+            self._device_input_states[dsuid] = is_active
             if old_state != is_active:
                 _LOGGER.info(
                     "Binary input CHANGED: %s (%s) state=%d active=%s (was %s)",
@@ -1186,16 +1192,24 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
         self._zone_states[key].update(kwargs)
 
     def get_device_on_state(self, dsuid: str) -> bool | None:
-        """Get individual device on/off state."""
+        """Get individual device OUTPUT on/off state (Joker-actor switch)."""
         return self._device_on_states.get(dsuid)
+
+    def get_device_input_state(self, dsuid: str) -> bool | None:
+        """Get individual device BINARY-INPUT active state (Joker binary_sensor)."""
+        return self._device_input_states.get(dsuid)
 
     def get_device_runtime(self, dsuid: str) -> dict | None:
         """Get last-known runtime info for a device (on, is_present, ...)."""
         return self._device_runtime.get(dsuid)
 
     def set_device_on_state(self, dsuid: str, is_on: bool) -> None:
-        """Set individual device on/off state."""
+        """Set individual device OUTPUT on/off state (Joker-actor switch)."""
         self._device_on_states[dsuid] = is_on
+
+    def set_device_input_state(self, dsuid: str, is_active: bool) -> None:
+        """Set individual device BINARY-INPUT active state (Joker binary_sensor)."""
+        self._device_input_states[dsuid] = is_active
 
     # Apartment state accessors (PRO)
 
@@ -1529,9 +1543,11 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
                     is_on = True
                 self.set_zone_state(zone_id, group, scene=scene, is_on=is_on)
 
-                # Update individual device states for Joker group scenes
+                # Update individual device states for Joker group scenes.
+                # Alleen ACTOREN (outputMode>0): een scene stuurt de relais-output.
+                # Pure ingang-sensoren volgen hun eigen binary-input, niet de scene.
                 if group == GROUP_JOKER:
-                    for dev in self.get_joker_devices_in_zone(zone_id):
+                    for dev in self.get_joker_actuators_in_zone(zone_id):
                         self.set_device_on_state(dev["dsuid"], is_on)
 
                 _LOGGER.debug(
@@ -1678,7 +1694,7 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
                             break
                 if matched_dsuid:
                     is_active = state_value.lower() in ("active", "true", "1", "open")
-                    self.set_device_on_state(matched_dsuid, is_active)
+                    self.set_device_input_state(matched_dsuid, is_active)
                     _LOGGER.debug(
                         "State change MATCHED: dsuid=%s matched=%s state=%s value=%s",
                         dsuid[:8], matched_dsuid[:8], state_name, state_value,
