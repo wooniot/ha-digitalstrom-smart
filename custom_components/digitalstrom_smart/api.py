@@ -572,15 +572,19 @@ class DigitalStromApi:
         )
 
     async def set_temperature_control_values(
-        self, zone_id: int, nominal_value: float
+        self, zone_id: int, value: float, op_mode: str = "Comfort"
     ) -> None:
-        """Set target temperature for a zone.
+        """Set the target temperature of a zone's active operation mode.
+
+        Fix #32: setTemperatureControlValues expects a per-operation-mode parameter
+        (e.g. Comfort=21). NominalValue is a read-only status field and gets ignored,
+        which caused a silent no-op.
 
         PRO FEATURE.
         """
         await self._request(
             "/json/zone/setTemperatureControlValues",
-            {"id": zone_id, "NominalValue": nominal_value},
+            {"id": zone_id, op_mode: value},
         )
 
     # =====================================================================
