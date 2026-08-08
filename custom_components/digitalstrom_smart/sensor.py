@@ -35,9 +35,11 @@ except ImportError:
         HPA = "hPa"
 
 try:
-    from homeassistant.const import CONCENTRATION_PARTS_PER_MILLION
+    # HA 2025.x+: CONCENTRATION_PARTS_PER_MILLION is deprecated (weg in Core 2027.8) → UnitOfRatio
+    from homeassistant.const import UnitOfRatio
+    _PPM_UNIT = UnitOfRatio.PARTS_PER_MILLION
 except ImportError:
-    CONCENTRATION_PARTS_PER_MILLION = "ppm"
+    _PPM_UNIT = "ppm"
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -127,7 +129,7 @@ DEVICE_SENSOR_MAP = {
     SENSOR_CO2: {
         "suffix": "CO2",
         "device_class": SensorDeviceClass.CO2,
-        "unit": CONCENTRATION_PARTS_PER_MILLION,
+        "unit": _PPM_UNIT,
     },
 }
 
