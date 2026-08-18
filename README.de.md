@@ -214,7 +214,7 @@ Home Assistant
 ## Unterstützte Hardware
 
 - **dSS20** (Minimum) oder neuerer Digital Strom Server
-- Alle Digital Strom Gerätetypen: GE (Licht), GR (Beschattung), SW (Joker/Schwarz), BL (Jalousie)
+- Alle Digital Strom Gerätetypen: GE (Licht), GR (Beschattung), SW (Joker/Schwarz), BL (Klima/Heizung)
 - Joker-Aktoren (Relais, Schalter) — einzeln steuerbar
 - Joker-Sensoren (Kontakte, Rauchmelder, Türsensoren) — automatische Geräteklassenerkennung
 - Ulux und ähnliche Multisensor-Geräte (CO2, Helligkeit, Temperatur, Feuchtigkeit)
