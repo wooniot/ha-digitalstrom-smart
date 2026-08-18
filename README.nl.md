@@ -221,7 +221,7 @@ Home Assistant
 ## Ondersteunde hardware
 
 - **dSS20** (minimum) of nieuwere Digital Strom Server
-- Alle Digital Strom-apparaattypes: GE (licht), GR (beschaduwing), SW (joker/zwart), BL (rolluiken)
+- Alle Digital Strom-apparaattypes: GE (licht), GR (beschaduwing), SW (joker/zwart), BL (klimaat/verwarming)
 - Joker-actoren (relais, schakelaars) — individueel bedienbaar
 - Joker-sensoren (contacten, rookmelders, deursensoren) — automatisch herkende device class
 - Ulux en vergelijkbare multisensorapparaten (CO2, helderheid, temperatuur, luchtvochtigheid)

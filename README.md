@@ -221,7 +221,7 @@ Home Assistant
 ## Supported hardware
 
 - **dSS20** (minimum) or newer Digital Strom Server
-- All Digital Strom device types: GE (light), GR (shade), SW (joker/black), BL (blinds)
+- All Digital Strom device types: GE (light), GR (shade), SW (joker/black), BL (climate/heating)
 - Joker actuators (relays, switches) — individually controllable
 - Joker sensors (contacts, smoke detectors, door sensors) — auto-detected device class
 - Ulux and similar multi-sensor devices (CO2, brightness, temperature, humidity)
