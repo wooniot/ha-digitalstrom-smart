@@ -1190,6 +1190,18 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
         self._apartment_states[name] = active
         self.async_update_listeners()
 
+    async def set_custom_state(self, state_id: str, active: bool) -> None:
+        """Set a Configurator User Defined State, optimistic local update.
+
+        is_on on the switch reads the real addon-state back on the next fetch,
+        so if the dSS ignores the write the switch returns to its true state.
+        """
+        await self.api.set_custom_state(state_id, active)
+        if state_id in self._custom_states:
+            self._custom_states[state_id]["state"] = "active" if active else "inactive"
+            self._custom_states[state_id]["value"] = 1 if active else 2
+        self.async_update_listeners()
+
     def set_apartment_state_local(self, name: str, active: bool) -> None:
         """Optimistically flag a system state locally WITHOUT writing to the dSS
         (used after a callScene trigger). The real value is corrected on the next

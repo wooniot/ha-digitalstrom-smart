@@ -309,6 +309,22 @@ class DigitalStromApi:
             {"name": name, "value": "active" if active else "inactive"},
         )
 
+    async def set_custom_state(self, state_id: str, active: bool) -> None:
+        """Set a Configurator User Defined State active/inactive.
+
+        Unlike system states (fire/rain), these are managed by the
+        ``system-addon-user-defined-states`` addon and live under
+        /usr/addon-states/, so the write must target that addon namespace.
+        """
+        await self._request(
+            "/json/state/set",
+            {
+                "addonName": "system-addon-user-defined-states",
+                "name": state_id,
+                "value": "active" if active else "inactive",
+            },
+        )
+
     async def get_all_states(self) -> list[dict]:
         """Return all /usr/states as [{name, value}, ...]. One property query.
 
