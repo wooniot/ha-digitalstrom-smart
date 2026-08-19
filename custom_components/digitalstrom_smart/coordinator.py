@@ -1735,6 +1735,19 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
             # dSS /usr/states backup-poll (events keep these live in between).
             await self.fetch_dss_states()
 
+            # Custom (Configurator) states: fetched once at startup in
+            # __init__.py (best-effort). If that attempt failed or raced the
+            # dSS on a fresh restart, self._custom_states stays permanently
+            # empty and switches like "Vrije tijd" report unknown forever
+            # (the addonStateChange handler can only update existing keys,
+            # never add). Retry here until it succeeds; once populated this
+            # is a no-op, so there is no extra steady-state dSS load.
+            if not self._custom_states:
+                try:
+                    await self.fetch_custom_states()
+                except Exception as err:  # never break the poll cycle
+                    _LOGGER.debug("Custom states retry fetch failed: %s", err)
+
             # Pro features: extra data
             if self.pro_enabled:
                 await self.fetch_sensor_data()

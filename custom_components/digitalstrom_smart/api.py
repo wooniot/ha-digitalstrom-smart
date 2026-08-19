@@ -222,7 +222,14 @@ class DigitalStromApi:
                         raise DigitalStromAuthError("Authentication failed (401)")
                     if resp.status == 403:
                         raise DigitalStromAuthError("Forbidden (403)")
-                    resp.raise_for_status()
+                    if resp.status >= 400:
+                        # Surface the dSS addon's actual error body instead of
+                        # discarding it behind a bare "500 Internal Server Error"
+                        # (raise_for_status keeps only the HTTP reason phrase).
+                        err_body = await resp.text()
+                        raise DigitalStromApiError(
+                            f"HTTP {resp.status} from dSS: {err_body[:500]}"
+                        )
                     data = await resp.json(content_type=None)
 
             if not data.get("ok", False):
