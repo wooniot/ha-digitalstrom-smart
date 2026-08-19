@@ -372,7 +372,7 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
                 try:
                     is_on = await self.api.get_device_state(dsuid)
                     self._device_on_states[dsuid] = is_on
-                    _LOGGER.debug("Joker-actor %s live output-stand: %s", dsuid, is_on)
+                    _LOGGER.info("[DS-DEBUG] Joker-actor %s live output-stand: %s", dsuid, is_on)
                 except Exception as err:
                     _LOGGER.debug("Joker-actor live state fetch faalde %s: %s", dsuid, err)
 
@@ -1229,6 +1229,8 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
         # /json/state/set moet die naam krijgen, anders negeert de dSS de write (René 18 aug).
         cs = self._custom_states.get(state_id) or {}
         write_name = cs.get("lookup_key") or state_id
+        _LOGGER.info("[DS-DEBUG] set_custom_state id=%s lookup_key=%s -> write_name=%s active=%s",
+                     state_id, cs.get("lookup_key"), write_name, active)
         await self.api.set_custom_state(write_name, active)
         if state_id in self._custom_states:
             self._custom_states[state_id]["state"] = "active" if active else "inactive"
