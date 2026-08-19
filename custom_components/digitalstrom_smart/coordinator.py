@@ -1196,7 +1196,11 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
         is_on on the switch reads the real addon-state back on the next fetch,
         so if the dSS ignores the write the switch returns to its true state.
         """
-        await self.api.set_custom_state(state_id, active)
+        # De dSS-addon-state staat onder z'n NAAM (lookup_key), niet het interne id —
+        # /json/state/set moet die naam krijgen, anders negeert de dSS de write (René 18 aug).
+        cs = self._custom_states.get(state_id) or {}
+        write_name = cs.get("lookup_key") or state_id
+        await self.api.set_custom_state(write_name, active)
         if state_id in self._custom_states:
             self._custom_states[state_id]["state"] = "active" if active else "inactive"
             self._custom_states[state_id]["value"] = 1 if active else 2
