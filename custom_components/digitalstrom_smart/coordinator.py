@@ -260,13 +260,13 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
                         bi_state = bi[0]["state"]
                         self._device_on_states[dsuid] = (bi_state == 1)
                     elif int(dev_info.get("output_mode", 0) or 0) > 0:
-                        # Joker-ACTOR als switch: de structuur-`isOn` is onbetrouwbaar
-                        # (toont na opstart soms 'aan' terwijl de actor uit is). De echte
-                        # aan/uit is de OUTPUT-status. Initialiseer alleen als de structuur
-                        # die al meegeeft; anders zet de output-poll (draait bij setup,
-                        # regel ~321) de juiste waarde — voorkomt een foute begin-'aan'.
-                        if "on" in dev:
-                            self._device_on_states[dsuid] = bool(dev.get("on", False))
+                        # Joker-ACTOR als switch: NIET uit de structuur/bulk-cache
+                        # (dev["on"]/isOn) seeden — die is stale vlak na (her)start (dSS
+                        # heeft de ds485-bus nog niet herscand) -> foute begin-'aan'
+                        # (René, 18 aug 2026). Laat _device_on_states hier bewust ONGEZET;
+                        # fetch_joker_actuator_states() leest de echte waarde per device
+                        # LIVE via get_device_state() (/json/device/getState -> isOn).
+                        pass
                     else:
                         self._device_on_states[dsuid] = dev_info.get("is_on", False) or False
 
@@ -339,6 +339,10 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
         # Poll binary input states for all Joker sensor devices
         await self.poll_binary_input_states()
 
+        # Seed de echte output-stand van elke Joker-ACTOR LIVE (na de bulk-poll, zodat de
+        # live-waarde de stale cache-waarde overschrijft bij (her)start). René 18 aug 2026.
+        await self.fetch_joker_actuator_states()
+
         # Fetch all dSS /usr/states in one call: fire/rain/alarm + day-night/holiday +
         # motion per zone + malfunction/service. Plus weather-service outdoor + sun.
         await self.fetch_dss_states()
@@ -346,6 +350,31 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
 
         # Poll presence (Present/Absent/...) at startup — events don't fire on (re)start.
         await self.fetch_apartment_state()
+
+    async def fetch_joker_actuator_states(self) -> None:
+        """Eenmalige LIVE uitlezing van de echte output-stand van elke Joker-ACTOR.
+
+        getStructure()/getDevices() geven een gecachte "on"/"isOn" die stale kan zijn
+        vlak na (her)start (dSS heeft de ds485-bus nog niet herscand). getState
+        (/json/device/getState) vraagt het device direct op en is betrouwbaar voor de
+        output-stand -> gebruik het hier één keer i.p.v. de bulk-cache voor de allereerste
+        waarde (René, 18 aug 2026). Devices MÉT een binaire ingang worden overgeslagen.
+        """
+        seen: set[str] = set()
+        for zone_id in list(self.zones):
+            for dev in self.get_joker_actuators_in_zone(zone_id):
+                dsuid = dev.get("dsuid")
+                if not dsuid or dsuid in seen:
+                    continue
+                seen.add(dsuid)
+                if dev.get("binary_inputs"):
+                    continue
+                try:
+                    is_on = await self.api.get_device_state(dsuid)
+                    self._device_on_states[dsuid] = is_on
+                    _LOGGER.debug("Joker-actor %s live output-stand: %s", dsuid, is_on)
+                except Exception as err:
+                    _LOGGER.debug("Joker-actor live state fetch faalde %s: %s", dsuid, err)
 
     async def poll_binary_input_states(self) -> None:
         """Poll all device runtime info via the apartment/getDevices web API.
