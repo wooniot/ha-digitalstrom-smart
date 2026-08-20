@@ -1225,12 +1225,21 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
         is_on on the switch reads the real addon-state back on the next fetch,
         so if the dSS ignores the write the switch returns to its true state.
         """
-        # De dSS-addon-state staat onder z'n NAAM (lookup_key), niet het interne id —
-        # /json/state/set moet die naam krijgen, anders negeert de dSS de write (René 18 aug).
+        # /json/state/set adresseert een state op z'n NAAM, niet op het interne id.
+        # Voor de 'custom-states' categorie levert de dSS GEEN completeName, dus viel
+        # lookup_key terug op het numerieke id -> de dSS weigerde dat met een 500
+        # "Not allowed or not existing system state name:<id>" (René 20 aug). Een echte,
+        # handmatig aangemaakte custom-state is in de dSS geregistreerd onder z'n
+        # DISPLAY-naam; die moet de write krijgen. Voor de sensor-categorieën blijft
+        # completeName (het path-encoded id in lookup_key) juist wél de sleutel.
         cs = self._custom_states.get(state_id) or {}
-        write_name = cs.get("lookup_key") or state_id
-        _LOGGER.info("[DS-DEBUG] set_custom_state id=%s lookup_key=%s -> write_name=%s active=%s",
-                     state_id, cs.get("lookup_key"), write_name, active)
+        category = cs.get("category", "custom-states")
+        if category == "custom-states":
+            write_name = cs.get("name") or cs.get("lookup_key") or state_id
+        else:
+            write_name = cs.get("lookup_key") or state_id
+        _LOGGER.info("[DS-DEBUG] set_custom_state id=%s category=%s name=%s lookup_key=%s -> write_name=%s active=%s",
+                     state_id, category, cs.get("name"), cs.get("lookup_key"), write_name, active)
         await self.api.set_custom_state(write_name, active)
         if state_id in self._custom_states:
             self._custom_states[state_id]["state"] = "active" if active else "inactive"
