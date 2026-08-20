@@ -1254,14 +1254,18 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
                          state_id, category, write_name, active)
             await self.api.set_custom_state(write_name, active)
         else:
-            # Kandidaat-namen (gede-dupliceerd, None's eruit), meest waarschijnlijk eerst:
-            #  1) runtime_name  = de naam waaronder /usr/addon-states de state kent
-            #  2) name          = display-naam (beta9)
-            #  3) lookup_key    = completeName indien aanwezig
-            #  4) id            = numeriek id (beta8)
+            # Kandidaat-namen (gede-dupliceerd, None's eruit), meest waarschijnlijk eerst.
+            # René's Network-capture bewees dat de dS-app de state adresseert op het
+            # NUMERIEKE id (name=1689278590) via de addon-parameter — dus id eerst.
+            # De andere namen blijven als robuuste fallback voor states die zich
+            # eventueel onder een andere sleutel registreren.
+            #  1) id            = numeriek id (== app-ground-truth)
+            #  2) runtime_name  = de naam waaronder /usr/addon-states de state kent
+            #  3) name          = display-naam
+            #  4) lookup_key    = completeName indien aanwezig
             candidates = []
-            for cand in (cs.get("runtime_name"), cs.get("name"),
-                         cs.get("lookup_key"), state_id):
+            for cand in (state_id, cs.get("runtime_name"), cs.get("name"),
+                         cs.get("lookup_key")):
                 if cand and cand not in candidates:
                     candidates.append(cand)
             _LOGGER.info("[DS-DEBUG] set_custom_state id=%s category=%s name=%s "

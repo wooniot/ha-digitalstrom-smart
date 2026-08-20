@@ -322,9 +322,17 @@ class DigitalStromApi:
         Unlike system states (fire/rain), these are managed by the
         ``system-addon-user-defined-states`` addon and live under
         /usr/addon-states/, so the write must target that addon namespace.
+
+        The dS-app addresses the write with the ``addon`` query parameter (NOT
+        ``addonName``) — verified against the real request the Configurator/app
+        fires on toggle:
+            GET /json/state/set?addon=system-addon-user-defined-states
+                &name=<numeric-id>&value=active  -> 200 OK
+        Passing ``addonName`` makes the dSS ignore the addon scope and reject
+        the write, which is what caused every identifier to fail before.
         """
         params = {
-            "addonName": "system-addon-user-defined-states",
+            "addon": "system-addon-user-defined-states",
             "name": state_id,
             "value": "active" if active else "inactive",
         }
