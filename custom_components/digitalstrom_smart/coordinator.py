@@ -1270,6 +1270,7 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
                          cs.get("lookup_key"), candidates, active)
             last_err: DigitalStromApiError | None = None
             write_name = None
+            attempts: list[str] = []
             for cand in candidates:
                 try:
                     await self.api.set_custom_state(cand, active)
@@ -1278,20 +1279,35 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
                     break
                 except DigitalStromApiError as err:
                     last_err = err
+                    attempts.append(f"name={cand!r} -> {err}")
                     _LOGGER.warning("[DS-DEBUG] custom-state write REJECTED with name=%s: %s", cand, err)
             if write_name is None:
-                # Geen enkele kandidaat werkte: dump de echte, in de dSS geregistreerde
-                # addon-state-namen zodat René's log meteen de waarheid toont.
+                # Geen enkele kandidaat werkte. beta8..10 logden de waarheid in
+                # APARTE regels (coordinator-ERROR + per-kandidaat-WARNING), maar
+                # René's log-paste begint steevast ÓP de switch-ERROR-regel, dus die
+                # losse regels vielen elke keer buiten de plak. Daarom vouwen we nu
+                # ALLES — versie, categorie, elke geprobeerde naam + het echte
+                # dSS-antwoord, en de live in de dSS geregistreerde addon-state-namen —
+                # in de ENE exception die switch.py logt. Zo bevat één regel de hele
+                # grondwaarheid, ook als er verder niets wordt meegeplakt, en bevestigt
+                # het "b11-diag" tegelijk dat deze build daadwerkelijk geladen is.
                 try:
                     live = await self.api.get_addon_states("system-addon-user-defined-states")
-                    _LOGGER.error(
-                        "[DS-DEBUG] custom-state write faalde voor id=%s met alle kandidaten %s. "
-                        "In de dSS geregistreerde addon-state-namen: %s",
-                        state_id, candidates, sorted(live.keys()),
-                    )
+                    registered = sorted(live.keys())
                 except DigitalStromApiError:
-                    pass
-                raise last_err if last_err else DigitalStromApiError("no candidate names")
+                    registered = ["<addon-states query faalde>"]
+                _LOGGER.error(
+                    "[DS-DEBUG] custom-state write faalde voor id=%s met alle kandidaten %s. "
+                    "In de dSS geregistreerde addon-state-namen: %s",
+                    state_id, candidates, registered,
+                )
+                raise DigitalStromApiError(
+                    f"[b11-diag] custom-state id={state_id} category={category} "
+                    f"niet schrijfbaar via /json/state/set — dSS weigert ELKE identifier "
+                    f"(dit is geen naam-, maar een mechanisme/rechten-probleem: de state "
+                    f"bestaat en schakelt wél in de DS-app). Geprobeerd: [{'; '.join(attempts)}]. "
+                    f"Live geregistreerde addon-state-namen op de dSS: {registered}"
+                )
 
         if state_id in self._custom_states:
             self._custom_states[state_id]["state"] = "active" if active else "inactive"
