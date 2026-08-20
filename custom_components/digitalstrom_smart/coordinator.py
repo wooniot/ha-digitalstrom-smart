@@ -703,7 +703,15 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
         for d in definitions:
             sid = d["id"]
             lookup_key = d.get("lookup_key", sid)
-            runtime = states.get(lookup_key, {}) or states.get(sid, {})
+            # Remember WHICH runtime key actually matched: that key is the name
+            # the dSS itself registered the state under in /usr/addon-states, and
+            # is therefore the authoritative name for a /json/state/set write.
+            if lookup_key in states:
+                runtime, runtime_name = states[lookup_key], lookup_key
+            elif sid in states:
+                runtime, runtime_name = states[sid], sid
+            else:
+                runtime, runtime_name = {}, None
             merged[sid] = {
                 "id": sid,
                 "name": d["name"] or f"State {sid}",
@@ -713,6 +721,7 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
                 "value": runtime.get("value"),
                 "category": d.get("category", "custom-states"),
                 "lookup_key": lookup_key,
+                "runtime_name": runtime_name,
                 "active_value": d.get("active_value"),
                 "inactive_value": d.get("inactive_value"),
             }
@@ -1225,22 +1234,65 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
         is_on on the switch reads the real addon-state back on the next fetch,
         so if the dSS ignores the write the switch returns to its true state.
         """
-        # /json/state/set adresseert een state op z'n NAAM, niet op het interne id.
-        # Voor de 'custom-states' categorie levert de dSS GEEN completeName, dus viel
-        # lookup_key terug op het numerieke id -> de dSS weigerde dat met een 500
-        # "Not allowed or not existing system state name:<id>" (René 20 aug). Een echte,
-        # handmatig aangemaakte custom-state is in de dSS geregistreerd onder z'n
-        # DISPLAY-naam; die moet de write krijgen. Voor de sensor-categorieën blijft
-        # completeName (het path-encoded id in lookup_key) juist wél de sleutel.
+        # /json/state/set adresseert een state op z'n NAAM. We wisten alleen nog
+        # niet ZEKER onder welke naam de dSS een handmatige custom-state registreert:
+        # het numerieke id (beta8) en de DISPLAY-naam (beta9) werden BEIDE geweigerd
+        # met "Not allowed or not existing system state name:<...>" (René 20 aug).
+        # Daarom raden we niet nog een derde naam, maar PROBEREN we systematisch de
+        # eindige set echte identifiers die de dSS ons zélf voor deze state gaf, in
+        # volgorde van waarschijnlijkheid, en gebruiken we de eerste die de dSS
+        # accepteert. Elke poging + dSS-antwoord wordt gelogd, zodat één schakelactie
+        # de juiste naam definitief blootlegt (of aantoont dat het geen naam-, maar
+        # een addon-scope-probleem is).
         cs = self._custom_states.get(state_id) or {}
         category = cs.get("category", "custom-states")
-        if category == "custom-states":
-            write_name = cs.get("name") or cs.get("lookup_key") or state_id
-        else:
+
+        if category != "custom-states":
+            # Sensor-/computed-categorieën: completeName is en blijft de sleutel.
             write_name = cs.get("lookup_key") or state_id
-        _LOGGER.info("[DS-DEBUG] set_custom_state id=%s category=%s name=%s lookup_key=%s -> write_name=%s active=%s",
-                     state_id, category, cs.get("name"), cs.get("lookup_key"), write_name, active)
-        await self.api.set_custom_state(write_name, active)
+            _LOGGER.info("[DS-DEBUG] set_custom_state id=%s category=%s -> write_name=%s active=%s",
+                         state_id, category, write_name, active)
+            await self.api.set_custom_state(write_name, active)
+        else:
+            # Kandidaat-namen (gede-dupliceerd, None's eruit), meest waarschijnlijk eerst:
+            #  1) runtime_name  = de naam waaronder /usr/addon-states de state kent
+            #  2) name          = display-naam (beta9)
+            #  3) lookup_key    = completeName indien aanwezig
+            #  4) id            = numeriek id (beta8)
+            candidates = []
+            for cand in (cs.get("runtime_name"), cs.get("name"),
+                         cs.get("lookup_key"), state_id):
+                if cand and cand not in candidates:
+                    candidates.append(cand)
+            _LOGGER.info("[DS-DEBUG] set_custom_state id=%s category=%s name=%s "
+                         "runtime_name=%s lookup_key=%s -> candidates=%s active=%s",
+                         state_id, category, cs.get("name"), cs.get("runtime_name"),
+                         cs.get("lookup_key"), candidates, active)
+            last_err: DigitalStromApiError | None = None
+            write_name = None
+            for cand in candidates:
+                try:
+                    await self.api.set_custom_state(cand, active)
+                    write_name = cand
+                    _LOGGER.info("[DS-DEBUG] custom-state write ACCEPTED by dSS with name=%s", cand)
+                    break
+                except DigitalStromApiError as err:
+                    last_err = err
+                    _LOGGER.warning("[DS-DEBUG] custom-state write REJECTED with name=%s: %s", cand, err)
+            if write_name is None:
+                # Geen enkele kandidaat werkte: dump de echte, in de dSS geregistreerde
+                # addon-state-namen zodat René's log meteen de waarheid toont.
+                try:
+                    live = await self.api.get_addon_states("system-addon-user-defined-states")
+                    _LOGGER.error(
+                        "[DS-DEBUG] custom-state write faalde voor id=%s met alle kandidaten %s. "
+                        "In de dSS geregistreerde addon-state-namen: %s",
+                        state_id, candidates, sorted(live.keys()),
+                    )
+                except DigitalStromApiError:
+                    pass
+                raise last_err if last_err else DigitalStromApiError("no candidate names")
+
         if state_id in self._custom_states:
             self._custom_states[state_id]["state"] = "active" if active else "inactive"
             self._custom_states[state_id]["value"] = 1 if active else 2
