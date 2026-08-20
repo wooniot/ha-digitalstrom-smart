@@ -66,8 +66,18 @@ async def async_setup_entry(
     # --- PRO: Configurator User Defined States as controllable switches ---
     # Issue #29: these are read as binary_sensors too, but a switch lets an
     # automation set them active/inactive (switch.turn_on/off) directly.
+    #
+    # Only the "custom-states" category is actually writable via
+    # /json/state/set. The combined-, triggered-, window- and sensor-state
+    # categories are COMPUTED (derived) by the dSS and are read-only: a write
+    # attempt returns HTTP 500 "Not allowed or not existing system state name"
+    # (René, 20 aug 2026). Those categories are already exposed as read-only
+    # binary_sensors (see binary_sensor.py), so we simply don't offer a switch
+    # for them here.
     if coordinator.pro_enabled:
         for state_id, data in coordinator.custom_states.items():
+            if data.get("category") != "custom-states":
+                continue
             entities.append(
                 DigitalStromCustomStateSwitch(coordinator, state_id, data)
             )
