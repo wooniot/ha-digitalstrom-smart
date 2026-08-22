@@ -381,8 +381,18 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
                 seen.add(dsuid)
                 try:
                     is_on = await self.api.get_device_state(dsuid)
+                    old_on = self._device_on_states.get(dsuid)
                     self._device_on_states[dsuid] = is_on
-                    _LOGGER.info("[DS-DEBUG] Joker-actor %s live output-stand: %s", dsuid, is_on)
+                    if old_on is None:
+                        _LOGGER.info("[DS-DEBUG] Joker-actor %s live output-stand: %s", dsuid, is_on)
+                    elif old_on != is_on:
+                        # Externe wijziging die geen callScene-event opleverde (of gemist
+                        # tijdens een event-loop reconnect): de 30s live getState-refresh
+                        # vangt 'm alsnog op.
+                        _LOGGER.info(
+                            "Joker-actor output CHANGED (extern, live getState): %s (%s) on=%s (was %s)",
+                            dsuid[:12], dev.get("name", ""), is_on, old_on,
+                        )
                 except Exception as err:
                     _LOGGER.debug("Joker-actor live state fetch faalde %s: %s", dsuid, err)
 
@@ -419,20 +429,16 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
                 "output_mode": int(dev.get("outputMode", 0) or 0),
             }
 
-            # Joker-ACTOR als switch (SW-ZWS200/SW-SSL200/SW-KL200 e.d.): aan/uit = de
-            # OUTPUT-status (dev["on"]). Werkt ook voor een actor MÉT binaire ingang: die
-            # ingang gaat naar het aparte _device_input_states-slot (de binary-input-lus
-            # hieronder), zodat hij de relais-stand hier niet overschrijft. Via dezelfde
-            # gecachte getDevices-poll — geen extra ds485-buslast.
-            if int(dev.get("outputMode", 0) or 0) > 0:
-                on_state = bool(dev.get("on", False))
-                old_on = self._device_on_states.get(dsuid)
-                self._device_on_states[dsuid] = on_state
-                if old_on is not None and old_on != on_state:
-                    _LOGGER.info(
-                        "Joker-actor output CHANGED (extern): %s (%s) on=%s (was %s)",
-                        dsuid[:12], dev.get("name", ""), on_state, old_on,
-                    )
+            # LET OP: de OUTPUT-stand van een Joker-ACTOR (de switch) wordt hier
+            # BEWUST NIET (meer) uit dev["on"] gezet. getDevices levert een gecachte
+            # "on" die stale is (de dSS herscant de ds485-bus niet per poll) — precies
+            # daarom seeden we bij (her)start de switch al LIVE via getState
+            # (fetch_joker_actuator_states). Deze fast-poll (elke 5s) overschreef die
+            # live-waarde daarna weer met de stale cache → switch klapte "na enige tijd"
+            # terug naar fout (René, SW-KL200 e-radiator, 22 aug 2026). De OUTPUT-stand
+            # komt nu uit: (1) live getState bij startup, (2) callScene-events, en
+            # (3) een live getState-refresh in de 30s-hoofdpoll (fetch_joker_actuator_states).
+            # Deze snelle poll blijft alleen voor de BINAIRE INGANG (hieronder).
 
         # Log poll results for debugging (every poll cycle at debug level)
         binary_devices = {d: dev for d, dev in self.devices.items() if dev.get("binary_inputs")}
@@ -1834,6 +1840,12 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
             # Apartment presence mode: poll every cycle (free + pro).
             # Events don't fire reliably on restart or external scene changes.
             await self.fetch_apartment_state()
+
+            # Joker-ACTOR output-stand LIVE herbevestigen (getState.isOn). callScene-
+            # events houden de switch tussendoor live; deze 30s-refresh is het vangnet
+            # voor gemiste events en vervangt de vroegere (onbetrouwbare) stale-cache-
+            # uitlezing in de 5s binary-poll (René, SW-KL200, 22 aug 2026).
+            await self.fetch_joker_actuator_states()
 
             # dSS /usr/states backup-poll (events keep these live in between).
             await self.fetch_dss_states()
