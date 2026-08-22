@@ -426,7 +426,7 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
                             _LOGGER.debug(
                                 "Joker-actor seed getOutputValue faalde %s: %s", dsuid, err
                             )
-                        _LOGGER.info(
+                        _LOGGER.debug(
                             "[DS-DEBUG] Joker-actor %s live output-stand: getState=%s "
                             "outputValue=%s (seed=getState)",
                             dsuid, is_on, seed_out_val,
@@ -462,7 +462,7 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
                 _LOGGER.debug("Joker-actor settle getOutputValue faalde %s: %s", dsuid, err)
             resolved = bool(is_on) or (out_val > 0)
             self._device_on_states[dsuid] = resolved
-            _LOGGER.info(
+            _LOGGER.debug(
                 "[DS-DEBUG] Joker-actor %s live output-stand (na settle): getState=%s "
                 "outputValue=%s -> %s",
                 dsuid, is_on, out_val, resolved,
@@ -1346,7 +1346,7 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
         if category != "custom-states":
             # Sensor-/computed-categorieën: completeName is en blijft de sleutel.
             write_name = cs.get("lookup_key") or state_id
-            _LOGGER.info("[DS-DEBUG] set_custom_state id=%s category=%s -> write_name=%s active=%s",
+            _LOGGER.debug("[DS-DEBUG] set_custom_state id=%s category=%s -> write_name=%s active=%s",
                          state_id, category, write_name, active)
             await self.api.set_custom_state(write_name, active)
         else:
@@ -1364,7 +1364,7 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
                          cs.get("lookup_key")):
                 if cand and cand not in candidates:
                     candidates.append(cand)
-            _LOGGER.info("[DS-DEBUG] set_custom_state id=%s category=%s name=%s "
+            _LOGGER.debug("[DS-DEBUG] set_custom_state id=%s category=%s name=%s "
                          "runtime_name=%s lookup_key=%s -> candidates=%s active=%s",
                          state_id, category, cs.get("name"), cs.get("runtime_name"),
                          cs.get("lookup_key"), candidates, active)
@@ -1375,7 +1375,7 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
                 try:
                     await self.api.set_custom_state(cand, active)
                     write_name = cand
-                    _LOGGER.info("[DS-DEBUG] custom-state write ACCEPTED by dSS with name=%s", cand)
+                    _LOGGER.debug("[DS-DEBUG] custom-state write ACCEPTED by dSS with name=%s", cand)
                     break
                 except DigitalStromApiError as err:
                     last_err = err

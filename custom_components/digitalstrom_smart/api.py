@@ -336,9 +336,9 @@ class DigitalStromApi:
             "name": state_id,
             "value": "active" if active else "inactive",
         }
-        _LOGGER.info("[DS-DEBUG] state/set request: %s", params)
+        _LOGGER.debug("[DS-DEBUG] state/set request: %s", params)
         result = await self._request("/json/state/set", params)
-        _LOGGER.info("[DS-DEBUG] state/set response: %s", result)
+        _LOGGER.debug("[DS-DEBUG] state/set response: %s", result)
 
     async def get_all_states(self) -> list[dict]:
         """Return all /usr/states as [{name, value}, ...]. One property query.
@@ -628,7 +628,7 @@ class DigitalStromApi:
             "/json/device/getState",
             {"dsuid": dsuid},
         )
-        _LOGGER.info("[DS-DEBUG] getState %s -> %s", dsuid, result)
+        _LOGGER.debug("[DS-DEBUG] getState %s -> %s", dsuid, result)
         return result.get("isOn", False)
 
     async def get_all_devices_full(self) -> list[dict]:
