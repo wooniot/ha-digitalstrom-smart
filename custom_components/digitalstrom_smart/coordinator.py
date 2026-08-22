@@ -66,6 +66,11 @@ _LOGGER = logging.getLogger(__name__)
 # Groups for which we create scene entities
 SCENE_GROUPS = (GROUP_LIGHT, GROUP_SHADE, GROUP_HEATING)
 
+# Bij (her)start heeft de dSS de ds485-bus nog niet herscand; getState kan dan een
+# pre-settle 'false' geven voor een Joker-ACTOR die fysiek AAN staat. We wachten deze
+# tijd voordat we een dubieuze 'false'-seed bevestigen (René, SW-KL, 22 aug 2026).
+JOKER_STARTUP_SETTLE_SECONDS = 5
+
 
 def _is_climate_control_active(control_mode) -> bool:
     """Check if a ControlMode value indicates active climate control.
@@ -350,7 +355,10 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
 
         # Seed de echte output-stand van elke Joker-ACTOR LIVE (na de bulk-poll, zodat de
         # live-waarde de stale cache-waarde overschrijft bij (her)start). René 18 aug 2026.
-        await self.fetch_joker_actuator_states()
+        # confirm_startup=True: een 'false'-seed bij boot wordt na een settle-delay nog één
+        # keer bevestigd (getState + getOutputValue), tegen de pre-settle boot-'false' die
+        # René's SW-KL fout op UIT zette (22 aug 2026).
+        await self.fetch_joker_actuator_states(confirm_startup=True)
 
         # Fetch all dSS /usr/states in one call: fire/rain/alarm + day-night/holiday +
         # motion per zone + malfunction/service. Plus weather-service outdoor + sun.
@@ -360,7 +368,7 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
         # Poll presence (Present/Absent/...) at startup — events don't fire on (re)start.
         await self.fetch_apartment_state()
 
-    async def fetch_joker_actuator_states(self) -> None:
+    async def fetch_joker_actuator_states(self, confirm_startup: bool = False) -> None:
         """Eenmalige LIVE uitlezing van de echte output-stand van elke Joker-ACTOR.
 
         getStructure()/getDevices() geven een gecachte "on"/"isOn" die stale kan zijn
@@ -371,8 +379,22 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
         ingang van hetzelfde device staat los (apart INPUT-slot), dus ook actoren MÉT ingang
         (bv. SW-KL200 e-radiator) worden hier geseed — dat is precies wat na herstart fout
         stond (René, 21 aug 2026).
+
+        SETTLE-BEVESTIGING (René, 22 aug 2026). René bewees met getState in de browser dat
+        een fysiek AAN-staande SW-KL wel degelijk 'isOn:true' geeft — getState is dus de
+        JUISTE bron. Maar de allereerste seed vlak ná (her)start las voor exact dezelfde
+        unit 'isOn:false' (log 16:31:19, de old_on-is-None-tak), terwijl dezelfde getState
+        even later 'true' gaf. Oorzaak: bij boot heeft de dSS de ds485-bus nog niet
+        herscand, dus geeft getState een pre-settle 'false'. Fix: bij ``confirm_startup``
+        een 'false'-seed NIET meteen vastzetten, maar na een korte settle-delay één keer
+        her-lezen én kruis-checken tegen getOutputValue (de directe relais-uitlezing,
+        onafhankelijk van isOn). Een echte 'true' blijft direct staan; alleen de dubieuze
+        'false' wordt bevestigd. De 30s-hoofdpoll blijft het uiteindelijke vangnet.
         """
         seen: set[str] = set()
+        # (zone_id, dsuid, dev) waarvan de eerste seed 'false' was en die na settle
+        # opnieuw gecheckt moeten worden — alleen relevant bij (her)start.
+        pending_confirm: list[tuple[int, str, dict]] = []
         for zone_id in list(self.zones):
             for dev in self.get_joker_actuators_in_zone(zone_id):
                 dsuid = dev.get("dsuid")
@@ -382,6 +404,11 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
                 try:
                     is_on = await self.api.get_device_state(dsuid)
                     old_on = self._device_on_states.get(dsuid)
+                    # Eerste seed + 'false' = dubieus vlak na boot (pre-settle). Niet meteen
+                    # vastzetten; even laten settelen en dan bevestigen (zie hieronder).
+                    if confirm_startup and old_on is None and not is_on:
+                        pending_confirm.append((zone_id, dsuid, dev))
+                        continue
                     self._device_on_states[dsuid] = is_on
                     if old_on is None:
                         _LOGGER.info("[DS-DEBUG] Joker-actor %s live output-stand: %s", dsuid, is_on)
@@ -395,6 +422,32 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
                         )
                 except Exception as err:
                     _LOGGER.debug("Joker-actor live state fetch faalde %s: %s", dsuid, err)
+
+        if not pending_confirm:
+            return
+
+        # Laat de dSS de ds485-bus even herscannen en her-lees dan de dubieuze 'false's.
+        await asyncio.sleep(JOKER_STARTUP_SETTLE_SECONDS)
+        for zone_id, dsuid, dev in pending_confirm:
+            is_on = False
+            out_val = -1
+            try:
+                is_on = await self.api.get_device_state(dsuid)
+            except Exception as err:
+                _LOGGER.debug("Joker-actor settle getState faalde %s: %s", dsuid, err)
+            # Onafhankelijke kruis-check: de rauwe relais-output (0..255). >0 = relais AAN,
+            # ook als getState.isOn nog 'false' teruggeeft. Rescue-t een valse boot-'false'.
+            try:
+                out_val = await self.api.get_device_output_value(dsuid)
+            except Exception as err:
+                _LOGGER.debug("Joker-actor settle getOutputValue faalde %s: %s", dsuid, err)
+            resolved = bool(is_on) or (out_val > 0)
+            self._device_on_states[dsuid] = resolved
+            _LOGGER.info(
+                "[DS-DEBUG] Joker-actor %s live output-stand (na settle): getState=%s "
+                "outputValue=%s -> %s",
+                dsuid, is_on, out_val, resolved,
+            )
 
     async def poll_binary_input_states(self) -> None:
         """Poll all device runtime info via the apartment/getDevices web API.
