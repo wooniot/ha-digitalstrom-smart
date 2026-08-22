@@ -46,14 +46,20 @@ DS_PRESET_MAP = {
     5: "holiday",
 }
 
-# HA preset to dS scene number (for GROUP_HEATING)
+# HA preset -> dS temperature-control operation-mode scene (GROUP_TEMP_CONTROL = 48).
+# Fix #32: was wrongly mapped to generic output scenes 5/17/18/19 on GROUP_HEATING (3),
+# which the temperature controller ignores (silent no-op). The controller listens on
+# group 48 with the operation-mode index as the scene number.
 PRESET_TO_SCENE = {
-    "off": SCENE_OFF,
-    "comfort": SCENE_1,
-    "economy": SCENE_2,
-    "night": SCENE_3,
-    "holiday": SCENE_4,
+    "off": 0,
+    "comfort": 1,
+    "economy": 2,
+    "night": 4,
+    "holiday": 5,
 }
+
+# dS operation-mode number -> setTemperatureControlValues parameter name (fix #32).
+OP_MODE_PARAM = {0: "Off", 1: "Comfort", 2: "Economy", 4: "Night", 5: "Holiday"}
 
 # dS ControlMode values
 CONTROL_MODE_OFF = 0
@@ -243,12 +249,16 @@ class DigitalStromClimate(CoordinatorEntity, ClimateEntity):
         temp = kwargs.get(ATTR_TEMPERATURE)
         if temp is None:
             return
+        # Fix #32: write the setpoint of the ACTIVE operation mode via its per-mode
+        # parameter (e.g. Comfort=21); NominalValue is read-only and was ignored.
+        status = self.coordinator.get_climate_status(self._zone_id)
+        op_mode = (status or {}).get("OperationMode", 1)
+        mode_param = OP_MODE_PARAM.get(op_mode, "Comfort")
         try:
             await self.coordinator.api.set_temperature_control_values(
-                self._zone_id, temp
+                self._zone_id, temp, mode_param
             )
             # Update local state
-            status = self.coordinator.get_climate_status(self._zone_id)
             if status:
                 status["NominalValue"] = temp
             self.async_write_ha_state()
@@ -257,13 +267,14 @@ class DigitalStromClimate(CoordinatorEntity, ClimateEntity):
 
     async def async_set_hvac_mode(self, hvac_mode: HVACMode) -> None:
         """Set HVAC mode (heat/cool/off/auto)."""
+        # Fix #32: operation-mode scenes live on GROUP_TEMP_CONTROL (48), not GROUP_HEATING (3).
         if hvac_mode == HVACMode.OFF:
-            scene = SCENE_OFF
+            scene = 0        # Off/Protection
         else:
-            scene = SCENE_1  # Comfort
+            scene = 1        # Comfort
         try:
             await self.coordinator.api.call_scene(
-                self._zone_id, GROUP_HEATING, scene
+                self._zone_id, GROUP_TEMP_CONTROL, scene
             )
             self.async_write_ha_state()
         except DigitalStromApiError as err:
@@ -271,10 +282,11 @@ class DigitalStromClimate(CoordinatorEntity, ClimateEntity):
 
     async def async_set_preset_mode(self, preset_mode: str) -> None:
         """Set heating preset (comfort/economy/night/holiday)."""
-        scene = PRESET_TO_SCENE.get(preset_mode, SCENE_1)
+        scene = PRESET_TO_SCENE.get(preset_mode, 1)  # default Comfort
         try:
+            # Fix #32: switch operation mode on GROUP_TEMP_CONTROL (48), not GROUP_HEATING (3).
             await self.coordinator.api.call_scene(
-                self._zone_id, GROUP_HEATING, scene
+                self._zone_id, GROUP_TEMP_CONTROL, scene
             )
             self.async_write_ha_state()
         except DigitalStromApiError as err:

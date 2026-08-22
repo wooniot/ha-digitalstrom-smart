@@ -63,6 +63,25 @@ async def async_setup_entry(
     # Configurator timers are exposed as run-once buttons (see button.py)
     # rather than as switches: enabling/disabling klokken stays in the dSS.
 
+    # --- PRO: Configurator User Defined States as controllable switches ---
+    # Issue #29: these are read as binary_sensors too, but a switch lets an
+    # automation set them active/inactive (switch.turn_on/off) directly.
+    #
+    # Only the "custom-states" category is actually writable via
+    # /json/state/set. The combined-, triggered-, window- and sensor-state
+    # categories are COMPUTED (derived) by the dSS and are read-only: a write
+    # attempt returns HTTP 500 "Not allowed or not existing system state name"
+    # (René, 20 aug 2026). Those categories are already exposed as read-only
+    # binary_sensors (see binary_sensor.py), so we simply don't offer a switch
+    # for them here.
+    if coordinator.pro_enabled:
+        for state_id, data in coordinator.custom_states.items():
+            if data.get("category") != "custom-states":
+                continue
+            entities.append(
+                DigitalStromCustomStateSwitch(coordinator, state_id, data)
+            )
+
     async_add_entities(entities)
 
 
@@ -183,6 +202,69 @@ class DigitalStromSystemTriggerSwitch(CoordinatorEntity, SwitchEntity):
                           self._scene, self._state_id, err)
             return
         self.coordinator.set_apartment_state_local(self._state_id, False)
+        self.async_write_ha_state()
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        self.async_write_ha_state()
+
+
+class DigitalStromCustomStateSwitch(CoordinatorEntity, SwitchEntity):
+    """A Configurator User Defined State as a controllable switch (PRO, issue #29).
+
+    turn_on/off set the addon state active/inactive via /json/state/set so an
+    automation can drive it. is_on reads the real addon-state back, so if the
+    dSS ignores the write the switch returns to its true state by itself."""
+
+    _attr_has_entity_name = True
+    _attr_icon = "mdi:state-machine"
+
+    def __init__(
+        self, coordinator: DigitalStromCoordinator, state_id: str, data: dict,
+    ) -> None:
+        super().__init__(coordinator)
+        self._state_id = state_id
+        dss_id = coordinator.dss_id
+        self._attr_unique_id = f"ds_{dss_id}_customstate_switch_{state_id}"
+        self._attr_name = data.get("name", f"State {state_id}")
+        self._attr_device_info = {
+            "identifiers": {(DOMAIN, f"{dss_id}_apartment")},
+            "name": "Digital Strom Server",
+            "manufacturer": MANUFACTURER,
+            "model": "dSS",
+        }
+
+    @property
+    def is_on(self) -> bool | None:
+        data = self.coordinator.get_custom_state(self._state_id)
+        if not data:
+            return None
+        state = str(data.get("state", "")).lower()
+        if state == "active":
+            return True
+        if state == "inactive":
+            return False
+        value = data.get("value")
+        if value == 1:
+            return True
+        if value == 2:
+            return False
+        return None
+
+    async def async_turn_on(self, **kwargs) -> None:
+        try:
+            await self.coordinator.set_custom_state(self._state_id, True)
+        except DigitalStromApiError as err:
+            _LOGGER.error("Failed to set custom state %s active: %s", self._state_id, err)
+            return
+        self.async_write_ha_state()
+
+    async def async_turn_off(self, **kwargs) -> None:
+        try:
+            await self.coordinator.set_custom_state(self._state_id, False)
+        except DigitalStromApiError as err:
+            _LOGGER.error("Failed to set custom state %s inactive: %s", self._state_id, err)
+            return
         self.async_write_ha_state()
 
     @callback

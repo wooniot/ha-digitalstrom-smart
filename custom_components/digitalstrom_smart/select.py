@@ -10,6 +10,7 @@ from homeassistant.components.select import SelectEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN, MANUFACTURER, APARTMENT_PRESENCE_KEYS
@@ -33,7 +34,7 @@ async def async_setup_entry(
     async_add_entities([DigitalStromPresenceSelect(coordinator)])
 
 
-class DigitalStromPresenceSelect(CoordinatorEntity, SelectEntity):
+class DigitalStromPresenceSelect(CoordinatorEntity, RestoreEntity, SelectEntity):
     """Apartment presence mode: Present, Absent, Sleeping, etc."""
 
     _attr_has_entity_name = True
@@ -47,6 +48,7 @@ class DigitalStromPresenceSelect(CoordinatorEntity, SelectEntity):
         self._attr_options = list(APARTMENT_PRESENCE_KEYS.values())
         self._scene_to_key = APARTMENT_PRESENCE_KEYS
         self._key_to_scene = {v: k for k, v in APARTMENT_PRESENCE_KEYS.items()}
+        self._restored_scene: int | None = None
         self._attr_device_info = {
             "identifiers": {(DOMAIN, f"{dss_id}_apartment")},
             "name": "Digital Strom Server",
@@ -54,9 +56,28 @@ class DigitalStromPresenceSelect(CoordinatorEntity, SelectEntity):
             "model": "dSS",
         }
 
+    async def async_added_to_hass(self) -> None:
+        """Restore the last known presence after a (re)start.
+
+        The dSS notification API only pushes presence on change, and after a
+        restart getLastCalledScene(0,0) frequently returns a non-presence scene
+        (esp. on larger installations), so the coordinator poll can't seed the
+        value and the entity shows 'unknown' (issue #10/#33). Restoring the last
+        known option keeps the state meaningful; a later event/poll overrides it
+        with the live value.
+        """
+        await super().async_added_to_hass()
+        last = await self.async_get_last_state()
+        if last is not None and last.state in self._key_to_scene:
+            self._restored_scene = self._key_to_scene[last.state]
+            if self.coordinator.apartment_presence is None:
+                self.coordinator.set_apartment_presence(self._restored_scene)
+
     @property
     def current_option(self) -> str | None:
         scene = self.coordinator.apartment_presence
+        if scene is None:
+            scene = self._restored_scene
         if scene is not None:
             return self._scene_to_key.get(scene)
         return None

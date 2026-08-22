@@ -66,6 +66,11 @@ _LOGGER = logging.getLogger(__name__)
 # Groups for which we create scene entities
 SCENE_GROUPS = (GROUP_LIGHT, GROUP_SHADE, GROUP_HEATING)
 
+# Bij (her)start heeft de dSS de ds485-bus nog niet herscand; getState kan dan een
+# pre-settle 'false' geven voor een Joker-ACTOR die fysiek AAN staat. We wachten deze
+# tijd voordat we een dubieuze 'false'-seed bevestigen (René, SW-KL, 22 aug 2026).
+JOKER_STARTUP_SETTLE_SECONDS = 5
+
 
 def _is_climate_control_active(control_mode) -> bool:
     """Check if a ControlMode value indicates active climate control.
@@ -120,8 +125,15 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
         self._device_sensor_values: dict[str, dict[int, float]] = {}
         self._last_power_poll: float = 0.0  # throttle SW-series power refresh to 30s
 
-        # Per-device on/off state tracking (for individual Joker switches)
-        self._device_on_states: dict[str, bool] = {}  # dsuid -> is_on
+        # Per-device on/off state tracking.
+        # _device_on_states    = de OUTPUT/relais-stand van een Joker-ACTOR (leest de switch).
+        # _device_input_states = de BINAIRE-INGANG-stand (leest de binary_sensor).
+        # Ze zijn GESCHEIDEN zodat een Joker-actor MET ingang (bv. SW-KL200 e-radiator) niet
+        # twee betekenissen in één slot propt — anders overschrijft de ingang-status na een
+        # herstart de relais-stand (switch toont 'aan' terwijl de actor uit is) en andersom
+        # overschrijft een scene-wissel de ingang-sensor. (René, SW-KL, 21 aug 2026.)
+        self._device_on_states: dict[str, bool] = {}  # dsuid -> output on/off (switch)
+        self._device_input_states: dict[str, bool] = {}  # dsuid -> binary input active (sensor)
         # Per-device runtime output status from apartment/getDevices: {dsuid: {"on", "is_present", "is_valid"}}
         self._device_runtime: dict[str, dict] = {}
 
@@ -253,21 +265,23 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
 
                 # Initialize device on/off state from structure
                 if GROUP_JOKER in dev_info["groups"]:
-                    # For binary input devices: use binaryInputs[0].state from structure
-                    # dSS state values: 1=active, 2=inactive (NOT 0/1!)
+                    om = int(dev_info.get("output_mode", 0) or 0)
                     bi = dev_info.get("binary_inputs", [])
+                    # Binaire ingang → INPUT-slot (leest de binary_sensor), NIET de switch.
+                    # dSS state values: 1=active, 2=inactive (NOT 0/1!)
                     if bi and "state" in bi[0]:
-                        bi_state = bi[0]["state"]
-                        self._device_on_states[dsuid] = (bi_state == 1)
-                    elif int(dev_info.get("output_mode", 0) or 0) > 0:
-                        # Joker-ACTOR als switch: de structuur-`isOn` is onbetrouwbaar
-                        # (toont na opstart soms 'aan' terwijl de actor uit is). De echte
-                        # aan/uit is de OUTPUT-status. Initialiseer alleen als de structuur
-                        # die al meegeeft; anders zet de output-poll (draait bij setup,
-                        # regel ~321) de juiste waarde — voorkomt een foute begin-'aan'.
-                        if "on" in dev:
-                            self._device_on_states[dsuid] = bool(dev.get("on", False))
-                    else:
+                        self._device_input_states[dsuid] = (bi[0]["state"] == 1)
+                    # Aan/uit van de ACTOR (switch) → OUTPUT-slot. Bij een actor (om>0) NIET
+                    # uit de structuur/bulk-cache (dev["on"]/isOn) seeden — die is stale vlak
+                    # na (her)start (dSS heeft de ds485-bus nog niet herscand) -> foute
+                    # begin-'aan' (René). Laat _device_on_states hier bewust ONGEZET; ook als
+                    # dit device een ingang heeft: fetch_joker_actuator_states() leest de
+                    # echte relais-stand LIVE via get_device_state() (/json/device/getState
+                    # -> isOn) in het aparte OUTPUT-slot. Alleen een pure ingang/wandknop
+                    # zonder output valt terug op isOn.
+                    if om > 0:
+                        pass
+                    elif not bi:
                         self._device_on_states[dsuid] = dev_info.get("is_on", False) or False
 
     # =====================================================================
@@ -339,6 +353,13 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
         # Poll binary input states for all Joker sensor devices
         await self.poll_binary_input_states()
 
+        # Seed de echte output-stand van elke Joker-ACTOR LIVE (na de bulk-poll, zodat de
+        # live-waarde de stale cache-waarde overschrijft bij (her)start). René 18 aug 2026.
+        # confirm_startup=True: een 'false'-seed bij boot wordt na een settle-delay nog één
+        # keer bevestigd (getState + getOutputValue), tegen de pre-settle boot-'false' die
+        # René's SW-KL fout op UIT zette (22 aug 2026).
+        await self.fetch_joker_actuator_states(confirm_startup=True)
+
         # Fetch all dSS /usr/states in one call: fire/rain/alarm + day-night/holiday +
         # motion per zone + malfunction/service. Plus weather-service outdoor + sun.
         await self.fetch_dss_states()
@@ -346,6 +367,106 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
 
         # Poll presence (Present/Absent/...) at startup — events don't fire on (re)start.
         await self.fetch_apartment_state()
+
+    async def fetch_joker_actuator_states(self, confirm_startup: bool = False) -> None:
+        """Eenmalige LIVE uitlezing van de echte output-stand van elke Joker-ACTOR.
+
+        getStructure()/getDevices() geven een gecachte "on"/"isOn" die stale kan zijn
+        vlak na (her)start (dSS heeft de ds485-bus nog niet herscand). getState
+        (/json/device/getState) vraagt het device direct op en is betrouwbaar voor de
+        output-stand -> gebruik het hier één keer i.p.v. de bulk-cache voor de allereerste
+        waarde (René, 18 aug 2026). getState.isOn = de RELAIS-output; een eventuele binaire
+        ingang van hetzelfde device staat los (apart INPUT-slot), dus ook actoren MÉT ingang
+        (bv. SW-KL200 e-radiator) worden hier geseed — dat is precies wat na herstart fout
+        stond (René, 21 aug 2026).
+
+        SETTLE-BEVESTIGING (René, 22 aug 2026). René bewees met getState in de browser dat
+        een fysiek AAN-staande SW-KL wel degelijk 'isOn:true' geeft — getState is dus de
+        JUISTE bron. Maar de allereerste seed vlak ná (her)start las voor exact dezelfde
+        unit 'isOn:false' (log 16:31:19, de old_on-is-None-tak), terwijl dezelfde getState
+        even later 'true' gaf. Oorzaak: bij boot heeft de dSS de ds485-bus nog niet
+        herscand, dus geeft getState een pre-settle 'false'. Fix: bij ``confirm_startup``
+        een 'false'-seed NIET meteen vastzetten, maar na een korte settle-delay één keer
+        her-lezen én kruis-checken tegen getOutputValue (de directe relais-uitlezing,
+        onafhankelijk van isOn). Een echte 'true' blijft direct staan; alleen de dubieuze
+        'false' wordt bevestigd. De 30s-hoofdpoll blijft het uiteindelijke vangnet.
+        """
+        seen: set[str] = set()
+        # (zone_id, dsuid, dev) waarvan de eerste seed 'false' was en die na settle
+        # opnieuw gecheckt moeten worden — alleen relevant bij (her)start.
+        pending_confirm: list[tuple[int, str, dict]] = []
+        for zone_id in list(self.zones):
+            for dev in self.get_joker_actuators_in_zone(zone_id):
+                dsuid = dev.get("dsuid")
+                if not dsuid or dsuid in seen:
+                    continue
+                seen.add(dsuid)
+                try:
+                    is_on = await self.api.get_device_state(dsuid)
+                    old_on = self._device_on_states.get(dsuid)
+                    # Eerste seed + 'false' = dubieus vlak na boot (pre-settle). Niet meteen
+                    # vastzetten; even laten settelen en dan bevestigen (zie hieronder).
+                    if confirm_startup and old_on is None and not is_on:
+                        pending_confirm.append((zone_id, dsuid, dev))
+                        continue
+                    self._device_on_states[dsuid] = is_on
+                    if old_on is None:
+                        # Diagnostiek (René, 22 aug 2026, beta16). René meldde een actor die
+                        # fysiek UIT staat maar getState.isOn=true geeft (ook in de browser) —
+                        # het spiegelbeeld van de pre-settle 'false'. Om te kunnen beslissen
+                        # welke bron klopt lezen we bij de allereerste seed ook de rauwe
+                        # relais-output (getOutputValue, 0..255) uit en loggen we beide naast
+                        # elkaar. GEEN gedragswijziging: de seed blijft getState.isOn; dit is
+                        # puur een meetregel zodat we isOn tegen de echte relais-output kunnen
+                        # ijken (zoals de settle-tak dat voor de 'false' al doet).
+                        seed_out_val = -1
+                        try:
+                            seed_out_val = await self.api.get_device_output_value(dsuid)
+                        except Exception as err:
+                            _LOGGER.debug(
+                                "Joker-actor seed getOutputValue faalde %s: %s", dsuid, err
+                            )
+                        _LOGGER.debug(
+                            "[DS-DEBUG] Joker-actor %s live output-stand: getState=%s "
+                            "outputValue=%s (seed=getState)",
+                            dsuid, is_on, seed_out_val,
+                        )
+                    elif old_on != is_on:
+                        # Externe wijziging die geen callScene-event opleverde (of gemist
+                        # tijdens een event-loop reconnect): de 30s live getState-refresh
+                        # vangt 'm alsnog op.
+                        _LOGGER.info(
+                            "Joker-actor output CHANGED (extern, live getState): %s (%s) on=%s (was %s)",
+                            dsuid[:12], dev.get("name", ""), is_on, old_on,
+                        )
+                except Exception as err:
+                    _LOGGER.debug("Joker-actor live state fetch faalde %s: %s", dsuid, err)
+
+        if not pending_confirm:
+            return
+
+        # Laat de dSS de ds485-bus even herscannen en her-lees dan de dubieuze 'false's.
+        await asyncio.sleep(JOKER_STARTUP_SETTLE_SECONDS)
+        for zone_id, dsuid, dev in pending_confirm:
+            is_on = False
+            out_val = -1
+            try:
+                is_on = await self.api.get_device_state(dsuid)
+            except Exception as err:
+                _LOGGER.debug("Joker-actor settle getState faalde %s: %s", dsuid, err)
+            # Onafhankelijke kruis-check: de rauwe relais-output (0..255). >0 = relais AAN,
+            # ook als getState.isOn nog 'false' teruggeeft. Rescue-t een valse boot-'false'.
+            try:
+                out_val = await self.api.get_device_output_value(dsuid)
+            except Exception as err:
+                _LOGGER.debug("Joker-actor settle getOutputValue faalde %s: %s", dsuid, err)
+            resolved = bool(is_on) or (out_val > 0)
+            self._device_on_states[dsuid] = resolved
+            _LOGGER.debug(
+                "[DS-DEBUG] Joker-actor %s live output-stand (na settle): getState=%s "
+                "outputValue=%s -> %s",
+                dsuid, is_on, out_val, resolved,
+            )
 
     async def poll_binary_input_states(self) -> None:
         """Poll all device runtime info via the apartment/getDevices web API.
@@ -380,20 +501,16 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
                 "output_mode": int(dev.get("outputMode", 0) or 0),
             }
 
-            # Joker-ACTOR als switch (SW-ZWS200/SW-SSL200 e.d.): aan/uit = de OUTPUT-status
-            # (dev["on"]), GEEN binary-input. De binary-input-lus hieronder slaat deze units
-            # over, waardoor extern (DS-app/schakelaar) gewijzigde standen nooit in HA kwamen.
-            # We werken _device_on_states nu ook bij vanuit de output, via dezelfde gecachte
-            # getDevices-poll — dus geen extra ds485-buslast.
-            if int(dev.get("outputMode", 0) or 0) > 0 and not bi:
-                on_state = bool(dev.get("on", False))
-                old_on = self._device_on_states.get(dsuid)
-                self._device_on_states[dsuid] = on_state
-                if old_on is not None and old_on != on_state:
-                    _LOGGER.info(
-                        "Joker-actor output CHANGED (extern): %s (%s) on=%s (was %s)",
-                        dsuid[:12], dev.get("name", ""), on_state, old_on,
-                    )
+            # LET OP: de OUTPUT-stand van een Joker-ACTOR (de switch) wordt hier
+            # BEWUST NIET (meer) uit dev["on"] gezet. getDevices levert een gecachte
+            # "on" die stale is (de dSS herscant de ds485-bus niet per poll) — precies
+            # daarom seeden we bij (her)start de switch al LIVE via getState
+            # (fetch_joker_actuator_states). Deze fast-poll (elke 5s) overschreef die
+            # live-waarde daarna weer met de stale cache → switch klapte "na enige tijd"
+            # terug naar fout (René, SW-KL200 e-radiator, 22 aug 2026). De OUTPUT-stand
+            # komt nu uit: (1) live getState bij startup, (2) callScene-events, en
+            # (3) een live getState-refresh in de 30s-hoofdpoll (fetch_joker_actuator_states).
+            # Deze snelle poll blijft alleen voor de BINAIRE INGANG (hieronder).
 
         # Log poll results for debugging (every poll cycle at debug level)
         binary_devices = {d: dev for d, dev in self.devices.items() if dev.get("binary_inputs")}
@@ -415,10 +532,10 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
                     list(all_states.keys())[:5] if not all_states.get(dsuid) else "matched",
                 )
                 continue
-            # dSS binary input: 1=active, 2=inactive
+            # dSS binary input: 1=active, 2=inactive → INPUT-slot (leest de binary_sensor)
             is_active = (bi_state == 1)
-            old_state = self._device_on_states.get(dsuid)
-            self._device_on_states[dsuid] = is_active
+            old_state = self._device_input_states.get(dsuid)
+            self._device_input_states[dsuid] = is_active
             if old_state != is_active:
                 _LOGGER.info(
                     "Binary input CHANGED: %s (%s) state=%d active=%s (was %s)",
@@ -674,7 +791,15 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
         for d in definitions:
             sid = d["id"]
             lookup_key = d.get("lookup_key", sid)
-            runtime = states.get(lookup_key, {}) or states.get(sid, {})
+            # Remember WHICH runtime key actually matched: that key is the name
+            # the dSS itself registered the state under in /usr/addon-states, and
+            # is therefore the authoritative name for a /json/state/set write.
+            if lookup_key in states:
+                runtime, runtime_name = states[lookup_key], lookup_key
+            elif sid in states:
+                runtime, runtime_name = states[sid], sid
+            else:
+                runtime, runtime_name = {}, None
             merged[sid] = {
                 "id": sid,
                 "name": d["name"] or f"State {sid}",
@@ -684,6 +809,7 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
                 "value": runtime.get("value"),
                 "category": d.get("category", "custom-states"),
                 "lookup_key": lookup_key,
+                "runtime_name": runtime_name,
                 "active_value": d.get("active_value"),
                 "inactive_value": d.get("inactive_value"),
             }
@@ -1151,16 +1277,24 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
         self._zone_states[key].update(kwargs)
 
     def get_device_on_state(self, dsuid: str) -> bool | None:
-        """Get individual device on/off state."""
+        """Get individual device OUTPUT on/off state (Joker-actor switch)."""
         return self._device_on_states.get(dsuid)
+
+    def get_device_input_state(self, dsuid: str) -> bool | None:
+        """Get individual device BINARY-INPUT active state (Joker binary_sensor)."""
+        return self._device_input_states.get(dsuid)
 
     def get_device_runtime(self, dsuid: str) -> dict | None:
         """Get last-known runtime info for a device (on, is_present, ...)."""
         return self._device_runtime.get(dsuid)
 
     def set_device_on_state(self, dsuid: str, is_on: bool) -> None:
-        """Set individual device on/off state."""
+        """Set individual device OUTPUT on/off state (Joker-actor switch)."""
         self._device_on_states[dsuid] = is_on
+
+    def set_device_input_state(self, dsuid: str, is_active: bool) -> None:
+        """Set individual device BINARY-INPUT active state (Joker binary_sensor)."""
+        self._device_input_states[dsuid] = is_active
 
     # Apartment state accessors (PRO)
 
@@ -1188,6 +1322,96 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
         """Set a dSS apartment system state, then update locally (optimistic)."""
         await self.api.set_apartment_state(name, active)
         self._apartment_states[name] = active
+        self.async_update_listeners()
+
+    async def set_custom_state(self, state_id: str, active: bool) -> None:
+        """Set a Configurator User Defined State, optimistic local update.
+
+        is_on on the switch reads the real addon-state back on the next fetch,
+        so if the dSS ignores the write the switch returns to its true state.
+        """
+        # /json/state/set adresseert een state op z'n NAAM. We wisten alleen nog
+        # niet ZEKER onder welke naam de dSS een handmatige custom-state registreert:
+        # het numerieke id (beta8) en de DISPLAY-naam (beta9) werden BEIDE geweigerd
+        # met "Not allowed or not existing system state name:<...>" (René 20 aug).
+        # Daarom raden we niet nog een derde naam, maar PROBEREN we systematisch de
+        # eindige set echte identifiers die de dSS ons zélf voor deze state gaf, in
+        # volgorde van waarschijnlijkheid, en gebruiken we de eerste die de dSS
+        # accepteert. Elke poging + dSS-antwoord wordt gelogd, zodat één schakelactie
+        # de juiste naam definitief blootlegt (of aantoont dat het geen naam-, maar
+        # een addon-scope-probleem is).
+        cs = self._custom_states.get(state_id) or {}
+        category = cs.get("category", "custom-states")
+
+        if category != "custom-states":
+            # Sensor-/computed-categorieën: completeName is en blijft de sleutel.
+            write_name = cs.get("lookup_key") or state_id
+            _LOGGER.debug("[DS-DEBUG] set_custom_state id=%s category=%s -> write_name=%s active=%s",
+                         state_id, category, write_name, active)
+            await self.api.set_custom_state(write_name, active)
+        else:
+            # Kandidaat-namen (gede-dupliceerd, None's eruit), meest waarschijnlijk eerst.
+            # René's Network-capture bewees dat de dS-app de state adresseert op het
+            # NUMERIEKE id (name=1689278590) via de addon-parameter — dus id eerst.
+            # De andere namen blijven als robuuste fallback voor states die zich
+            # eventueel onder een andere sleutel registreren.
+            #  1) id            = numeriek id (== app-ground-truth)
+            #  2) runtime_name  = de naam waaronder /usr/addon-states de state kent
+            #  3) name          = display-naam
+            #  4) lookup_key    = completeName indien aanwezig
+            candidates = []
+            for cand in (state_id, cs.get("runtime_name"), cs.get("name"),
+                         cs.get("lookup_key")):
+                if cand and cand not in candidates:
+                    candidates.append(cand)
+            _LOGGER.debug("[DS-DEBUG] set_custom_state id=%s category=%s name=%s "
+                         "runtime_name=%s lookup_key=%s -> candidates=%s active=%s",
+                         state_id, category, cs.get("name"), cs.get("runtime_name"),
+                         cs.get("lookup_key"), candidates, active)
+            last_err: DigitalStromApiError | None = None
+            write_name = None
+            attempts: list[str] = []
+            for cand in candidates:
+                try:
+                    await self.api.set_custom_state(cand, active)
+                    write_name = cand
+                    _LOGGER.debug("[DS-DEBUG] custom-state write ACCEPTED by dSS with name=%s", cand)
+                    break
+                except DigitalStromApiError as err:
+                    last_err = err
+                    attempts.append(f"name={cand!r} -> {err}")
+                    _LOGGER.warning("[DS-DEBUG] custom-state write REJECTED with name=%s: %s", cand, err)
+            if write_name is None:
+                # Geen enkele kandidaat werkte. beta8..10 logden de waarheid in
+                # APARTE regels (coordinator-ERROR + per-kandidaat-WARNING), maar
+                # René's log-paste begint steevast ÓP de switch-ERROR-regel, dus die
+                # losse regels vielen elke keer buiten de plak. Daarom vouwen we nu
+                # ALLES — versie, categorie, elke geprobeerde naam + het echte
+                # dSS-antwoord, en de live in de dSS geregistreerde addon-state-namen —
+                # in de ENE exception die switch.py logt. Zo bevat één regel de hele
+                # grondwaarheid, ook als er verder niets wordt meegeplakt, en bevestigt
+                # het "b11-diag" tegelijk dat deze build daadwerkelijk geladen is.
+                try:
+                    live = await self.api.get_addon_states("system-addon-user-defined-states")
+                    registered = sorted(live.keys())
+                except DigitalStromApiError:
+                    registered = ["<addon-states query faalde>"]
+                _LOGGER.error(
+                    "[DS-DEBUG] custom-state write faalde voor id=%s met alle kandidaten %s. "
+                    "In de dSS geregistreerde addon-state-namen: %s",
+                    state_id, candidates, registered,
+                )
+                raise DigitalStromApiError(
+                    f"[b11-diag] custom-state id={state_id} category={category} "
+                    f"niet schrijfbaar via /json/state/set — dSS weigert ELKE identifier "
+                    f"(dit is geen naam-, maar een mechanisme/rechten-probleem: de state "
+                    f"bestaat en schakelt wél in de DS-app). Geprobeerd: [{'; '.join(attempts)}]. "
+                    f"Live geregistreerde addon-state-namen op de dSS: {registered}"
+                )
+
+        if state_id in self._custom_states:
+            self._custom_states[state_id]["state"] = "active" if active else "inactive"
+            self._custom_states[state_id]["value"] = 1 if active else 2
         self.async_update_listeners()
 
     def set_apartment_state_local(self, name: str, active: bool) -> None:
@@ -1494,9 +1718,11 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
                     is_on = True
                 self.set_zone_state(zone_id, group, scene=scene, is_on=is_on)
 
-                # Update individual device states for Joker group scenes
+                # Update individual device states for Joker group scenes.
+                # Alleen ACTOREN (outputMode>0): een scene stuurt de relais-output.
+                # Pure ingang-sensoren volgen hun eigen binary-input, niet de scene.
                 if group == GROUP_JOKER:
-                    for dev in self.get_joker_devices_in_zone(zone_id):
+                    for dev in self.get_joker_actuators_in_zone(zone_id):
                         self.set_device_on_state(dev["dsuid"], is_on)
 
                 _LOGGER.debug(
@@ -1643,7 +1869,9 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
                             break
                 if matched_dsuid:
                     is_active = state_value.lower() in ("active", "true", "1", "open")
-                    self.set_device_on_state(matched_dsuid, is_active)
+                    # Binaire-ingang-event → INPUT-slot (leest de binary_sensor), los van
+                    # de relais-output van dezelfde actor.
+                    self.set_device_input_state(matched_dsuid, is_active)
                     _LOGGER.debug(
                         "State change MATCHED: dsuid=%s matched=%s state=%s value=%s",
                         dsuid[:8], matched_dsuid[:8], state_name, state_value,
@@ -1685,8 +1913,27 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
             # Events don't fire reliably on restart or external scene changes.
             await self.fetch_apartment_state()
 
+            # Joker-ACTOR output-stand LIVE herbevestigen (getState.isOn). callScene-
+            # events houden de switch tussendoor live; deze 30s-refresh is het vangnet
+            # voor gemiste events en vervangt de vroegere (onbetrouwbare) stale-cache-
+            # uitlezing in de 5s binary-poll (René, SW-KL200, 22 aug 2026).
+            await self.fetch_joker_actuator_states()
+
             # dSS /usr/states backup-poll (events keep these live in between).
             await self.fetch_dss_states()
+
+            # Custom (Configurator) states: fetched once at startup in
+            # __init__.py (best-effort). If that attempt failed or raced the
+            # dSS on a fresh restart, self._custom_states stays permanently
+            # empty and switches like "Vrije tijd" report unknown forever
+            # (the addonStateChange handler can only update existing keys,
+            # never add). Retry here until it succeeds; once populated this
+            # is a no-op, so there is no extra steady-state dSS load.
+            if not self._custom_states:
+                try:
+                    await self.fetch_custom_states()
+                except Exception as err:  # never break the poll cycle
+                    _LOGGER.debug("Custom states retry fetch failed: %s", err)
 
             # Pro features: extra data
             if self.pro_enabled:

@@ -224,7 +224,8 @@ class DigitalStromJokerBinarySensor(CoordinatorEntity, BinarySensorEntity):
 
     @property
     def is_on(self) -> bool | None:
-        state = self.coordinator.get_device_on_state(self._dsuid)
+        # Leest de BINAIRE-INGANG-slot (los van de relais-output van dezelfde actor).
+        state = self.coordinator.get_device_input_state(self._dsuid)
         if state is None:
             return None
         return not state if self._invert else state

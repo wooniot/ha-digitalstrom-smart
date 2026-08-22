@@ -222,7 +222,14 @@ class DigitalStromApi:
                         raise DigitalStromAuthError("Authentication failed (401)")
                     if resp.status == 403:
                         raise DigitalStromAuthError("Forbidden (403)")
-                    resp.raise_for_status()
+                    if resp.status >= 400:
+                        # Surface the dSS addon's actual error body instead of
+                        # discarding it behind a bare "500 Internal Server Error"
+                        # (raise_for_status keeps only the HTTP reason phrase).
+                        err_body = await resp.text()
+                        raise DigitalStromApiError(
+                            f"HTTP {resp.status} from dSS: {err_body[:500]}"
+                        )
                     data = await resp.json(content_type=None)
 
             if not data.get("ok", False):
@@ -308,6 +315,30 @@ class DigitalStromApi:
             "/json/state/set",
             {"name": name, "value": "active" if active else "inactive"},
         )
+
+    async def set_custom_state(self, state_id: str, active: bool) -> None:
+        """Set a Configurator User Defined State active/inactive.
+
+        Unlike system states (fire/rain), these are managed by the
+        ``system-addon-user-defined-states`` addon and live under
+        /usr/addon-states/, so the write must target that addon namespace.
+
+        The dS-app addresses the write with the ``addon`` query parameter (NOT
+        ``addonName``) — verified against the real request the Configurator/app
+        fires on toggle:
+            GET /json/state/set?addon=system-addon-user-defined-states
+                &name=<numeric-id>&value=active  -> 200 OK
+        Passing ``addonName`` makes the dSS ignore the addon scope and reject
+        the write, which is what caused every identifier to fail before.
+        """
+        params = {
+            "addon": "system-addon-user-defined-states",
+            "name": state_id,
+            "value": "active" if active else "inactive",
+        }
+        _LOGGER.debug("[DS-DEBUG] state/set request: %s", params)
+        result = await self._request("/json/state/set", params)
+        _LOGGER.debug("[DS-DEBUG] state/set response: %s", result)
 
     async def get_all_states(self) -> list[dict]:
         """Return all /usr/states as [{name, value}, ...]. One property query.
@@ -572,15 +603,19 @@ class DigitalStromApi:
         )
 
     async def set_temperature_control_values(
-        self, zone_id: int, nominal_value: float
+        self, zone_id: int, value: float, op_mode: str = "Comfort"
     ) -> None:
-        """Set target temperature for a zone.
+        """Set the target temperature of a zone's active operation mode.
+
+        Fix #32: setTemperatureControlValues expects a per-operation-mode parameter
+        (e.g. Comfort=21). NominalValue is a read-only status field and gets ignored,
+        which caused a silent no-op.
 
         PRO FEATURE.
         """
         await self._request(
             "/json/zone/setTemperatureControlValues",
-            {"id": zone_id, "NominalValue": nominal_value},
+            {"id": zone_id, op_mode: value},
         )
 
     # =====================================================================
@@ -593,6 +628,7 @@ class DigitalStromApi:
             "/json/device/getState",
             {"dsuid": dsuid},
         )
+        _LOGGER.debug("[DS-DEBUG] getState %s -> %s", dsuid, result)
         return result.get("isOn", False)
 
     async def get_all_devices_full(self) -> list[dict]:
