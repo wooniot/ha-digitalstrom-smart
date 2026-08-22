@@ -411,7 +411,26 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
                         continue
                     self._device_on_states[dsuid] = is_on
                     if old_on is None:
-                        _LOGGER.info("[DS-DEBUG] Joker-actor %s live output-stand: %s", dsuid, is_on)
+                        # Diagnostiek (René, 22 aug 2026, beta16). René meldde een actor die
+                        # fysiek UIT staat maar getState.isOn=true geeft (ook in de browser) —
+                        # het spiegelbeeld van de pre-settle 'false'. Om te kunnen beslissen
+                        # welke bron klopt lezen we bij de allereerste seed ook de rauwe
+                        # relais-output (getOutputValue, 0..255) uit en loggen we beide naast
+                        # elkaar. GEEN gedragswijziging: de seed blijft getState.isOn; dit is
+                        # puur een meetregel zodat we isOn tegen de echte relais-output kunnen
+                        # ijken (zoals de settle-tak dat voor de 'false' al doet).
+                        seed_out_val = -1
+                        try:
+                            seed_out_val = await self.api.get_device_output_value(dsuid)
+                        except Exception as err:
+                            _LOGGER.debug(
+                                "Joker-actor seed getOutputValue faalde %s: %s", dsuid, err
+                            )
+                        _LOGGER.info(
+                            "[DS-DEBUG] Joker-actor %s live output-stand: getState=%s "
+                            "outputValue=%s (seed=getState)",
+                            dsuid, is_on, seed_out_val,
+                        )
                     elif old_on != is_on:
                         # Externe wijziging die geen callScene-event opleverde (of gemist
                         # tijdens een event-loop reconnect): de 30s live getState-refresh
