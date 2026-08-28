@@ -365,6 +365,13 @@ OUTDOOR_SENSOR_TRANSLATION_KEYS = {
 VENTILATION_ON_THRESHOLD_PCT = 10
 VENTILATION_OUTPUT_OFFSETS = (0, 1)
 UMR200_HW_MARKER = "UMR200"
+# René (28 aug 2026): in de praktijk beantwoordt niet elke UMR200-dsuid beide
+# offsets — getOutputValue offset=1 faalt structureel op single-output units
+# met een echte dS485-busfout (DS485d Socket Error -17 invalid parameter),
+# niet een onschuldige cache-miss. Na dit aantal opeenvolgende mislukkingen
+# per dsuid/offset wordt die combinatie voor de rest van de sessie
+# overgeslagen (self-healing bij herstart / structuurwijziging).
+UMR200_OFFSET_FAIL_LIMIT = 3
 
 # --- dS Sensor Types ---
 SENSOR_ACTIVE_POWER = 4    # Watt — SW-KL200, SW-ZWS200, SW-SSL200, SW-UMR200

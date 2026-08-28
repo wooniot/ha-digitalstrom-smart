@@ -38,6 +38,7 @@ from .const import (
     VENTILATION_OUTPUT_OFFSETS,
     VENTILATION_ON_THRESHOLD_PCT,
     UMR200_HW_MARKER,
+    UMR200_OFFSET_FAIL_LIMIT,
     ZONE_LEVEL_GROUPS,
     SCENE_OFF,
     SCENE_1,
@@ -209,6 +210,17 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
         # ventilation-status sensor). To see which source is wrong at boot without
         # asking René to enable full debug, log both side by side once per session.
         self._umr200_seed_logged: set[str] = set()
+
+        # dsuid/offset pairs confirmed to NOT exist on this UMR200 (getOutputValue
+        # keeps returning a dS485 bus error -- "invalid parameter", i.e. that relay
+        # channel is not wired on this module). Single-output UMR200 actors only
+        # populate offset 0; VENTILATION_OUTPUT_OFFSETS unconditionally probes
+        # offset 1 too, so every vangnet cycle (~1x/min) sent a doomed command onto
+        # the live dS485 bus for every such device. After UMR200_OFFSET_FAIL_LIMIT
+        # consecutive failures for the same dsuid/offset we stop asking -- a single
+        # transient dSS hiccup does not blacklist a real offset (René, 28 aug 2026).
+        self._umr200_offset_fail_counts: dict[str, int] = {}
+        self._umr200_bad_offsets: set[str] = set()
 
         # Parse structure into zones and devices
         self.zones: dict[int, dict] = {}
@@ -1987,6 +1999,9 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
                 continue
             per_offset: dict[int, dict] = {}
             for offset in VENTILATION_OUTPUT_OFFSETS:
+                seed_key = f"{dsuid}:{offset}"
+                if seed_key in self._umr200_bad_offsets:
+                    continue
                 try:
                     raw = await self.api.get_device_output_value(dsuid, offset)
                 except Exception as err:
@@ -1994,7 +2009,18 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
                         "UMR200 %s (%s) getOutputValue offset=%d faalde: %s",
                         dsuid[:12], dev.get("name", ""), offset, err,
                     )
+                    fails = self._umr200_offset_fail_counts.get(seed_key, 0) + 1
+                    self._umr200_offset_fail_counts[seed_key] = fails
+                    if fails >= UMR200_OFFSET_FAIL_LIMIT:
+                        self._umr200_bad_offsets.add(seed_key)
+                        _LOGGER.info(
+                            "UMR200 %s (%s) offset=%d faalt structureel (%dx) -- "
+                            "wordt niet meer gepolld deze sessie (geen dS485-uitgang "
+                            "op dit offset)",
+                            dsuid[:12], dev.get("name", ""), offset, fails,
+                        )
                     continue
+                self._umr200_offset_fail_counts.pop(seed_key, None)
                 raw = int(raw or 0)
                 pct = round(max(0, min(255, raw)) / 255 * 100)
                 per_offset[offset] = {"raw": raw, "pct": pct}
@@ -2006,7 +2032,6 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
                 # control switch (is_on = getState.isOn seed) AND a ventilation
                 # status sensor (running = getOutputValue > threshold). If those
                 # two disagree at boot, that IS the wrong initial value. Log both.
-                seed_key = f"{dsuid}:{offset}"
                 if seed_key not in self._umr200_seed_logged:
                     self._umr200_seed_logged.add(seed_key)
                     running = pct > VENTILATION_ON_THRESHOLD_PCT
