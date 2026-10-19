@@ -182,6 +182,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # (e.g. license unbound after a firmware update). Cleared when valid.
     sync_pro_issue(hass, entry.entry_id, bool(pro_key), coordinator.pro_enabled)
 
+    # René (19 okt 2026): laad de persistente UMR200 dode-offset-blacklist vóór de
+    # eerste refresh, zodat de seed-poll meteen weet welke getOutputValue-offsets
+    # structureel falen (invalid parameter) en die niet opnieuw op de ds485-bus zet.
+    await coordinator.async_load_bad_offsets()
+
     # Initial data fetch
     await coordinator.async_config_entry_first_refresh()
 

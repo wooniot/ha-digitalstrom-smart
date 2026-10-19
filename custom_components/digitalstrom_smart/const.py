@@ -372,6 +372,15 @@ UMR200_HW_MARKER = "UMR200"
 # per dsuid/offset wordt die combinatie voor de rest van de sessie
 # overgeslagen (self-healing bij herstart / structuurwijziging).
 UMR200_OFFSET_FAIL_LIMIT = 3
+# René (19 okt 2026): de fout "invalid parameter" (DS485d Socket Error -17) is
+# geen transient maar structureel — dat relaiskanaal bestaat niet op deze unit.
+# Zo'n offset wordt daarom METEEN geblokkeerd (één mislukking i.p.v.
+# UMR200_OFFSET_FAIL_LIMIT). De blacklist wordt bovendien persistent bewaard via
+# homeassistant.helpers.storage.Store, zodat de seed-poll na een herstart meteen
+# weet welke offsets dood zijn (anders faalde offset=1 op elke single-output unit
+# opnieuw één cyclus per herstart, ~3,6s/call op de live ds485-bus).
+DS485_INVALID_PARAMETER_MARKER = "invalid parameter"
+UMR200_BAD_OFFSETS_STORE_VERSION = 1
 
 # --- dS Sensor Types ---
 SENSOR_ACTIVE_POWER = 4    # Watt — SW-KL200, SW-ZWS200, SW-SSL200, SW-UMR200

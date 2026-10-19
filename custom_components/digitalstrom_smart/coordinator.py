@@ -12,6 +12,7 @@ from typing import Any
 
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.dispatcher import async_dispatcher_send
+from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .api import DigitalStromApi, DigitalStromApiError, DigitalStromAuthError
@@ -41,6 +42,8 @@ from .const import (
     VENTILATION_ON_THRESHOLD_PCT,
     UMR200_HW_MARKER,
     UMR200_OFFSET_FAIL_LIMIT,
+    DS485_INVALID_PARAMETER_MARKER,
+    UMR200_BAD_OFFSETS_STORE_VERSION,
     ZONE_LEVEL_GROUPS,
     SCENE_OFF,
     SCENE_1,
@@ -232,6 +235,15 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
         # transient dSS hiccup does not blacklist a real offset (René, 28 aug 2026).
         self._umr200_offset_fail_counts: dict[str, int] = {}
         self._umr200_bad_offsets: set[str] = set()
+        # René (19 okt 2026): bewaar de blacklist over herstarts. Een "invalid
+        # parameter"-fout is structureel (dat kanaal bestaat fysiek niet), dus na
+        # de eerste keer hoeft de seed-poll die call bij elke herstart niet meer te
+        # herhalen. Key per dss_id zodat meerdere dSS'en elkaar niet overschrijven.
+        self._umr200_bad_offsets_store: Store = Store(
+            hass, UMR200_BAD_OFFSETS_STORE_VERSION,
+            f"{DOMAIN}_umr200_bad_offsets_{dss_id or 'default'}",
+        )
+        self._bad_offsets_loaded = False
 
         # Parse structure into zones and devices
         self.zones: dict[int, dict] = {}
@@ -2144,15 +2156,27 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
                         "UMR200 %s (%s) getOutputValue offset=%d faalde: %s",
                         dsuid[:12], dev.get("name", ""), offset, err,
                     )
+                    # René (19 okt 2026): "invalid parameter" (DS485d Socket Error
+                    # -17) is STRUCTUREEL — dat relaiskanaal bestaat niet op deze
+                    # unit. Blokkeer dat offset dan METEEN i.p.v. pas na
+                    # UMR200_OFFSET_FAIL_LIMIT pogingen; een echte transiente
+                    # dSS-hik (andere fouttekst) telt nog gewoon op tot de limiet.
+                    structural = DS485_INVALID_PARAMETER_MARKER in str(err).lower()
                     fails = self._umr200_offset_fail_counts.get(seed_key, 0) + 1
                     self._umr200_offset_fail_counts[seed_key] = fails
-                    if fails >= UMR200_OFFSET_FAIL_LIMIT:
+                    if (structural or fails >= UMR200_OFFSET_FAIL_LIMIT) and \
+                            seed_key not in self._umr200_bad_offsets:
                         self._umr200_bad_offsets.add(seed_key)
+                        # Persistent bewaren zodat de seed-poll na een herstart deze
+                        # dode offset meteen overslaat (geen mislukte bus-call meer).
+                        await self._persist_bad_offsets()
                         _LOGGER.info(
-                            "UMR200 %s (%s) offset=%d faalt structureel (%dx) -- "
-                            "wordt niet meer gepolld deze sessie (geen dS485-uitgang "
-                            "op dit offset)",
-                            dsuid[:12], dev.get("name", ""), offset, fails,
+                            "UMR200 %s (%s) offset=%d faalt %s -- wordt niet meer "
+                            "gepolld (geen dS485-uitgang op dit offset; blacklist "
+                            "bewaard over herstarts)",
+                            dsuid[:12], dev.get("name", ""), offset,
+                            "structureel (invalid parameter)" if structural
+                            else f"structureel ({fails}x)",
                         )
                     continue
                 self._umr200_offset_fail_counts.pop(seed_key, None)
@@ -2180,6 +2204,50 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
                     )
             if per_offset:
                 self._ventilation_outputs[dsuid] = per_offset
+
+    async def async_load_bad_offsets(self) -> None:
+        """Laad de persistente UMR200 dode-offset-blacklist vóór de eerste poll.
+
+        Idempotent: draait eenmalig. Faalt het laden (eerste keer, geen bestand),
+        dan start de blacklist leeg en leert hij zich opnieuw op — geen fout.
+        """
+        if self._bad_offsets_loaded:
+            return
+        self._bad_offsets_loaded = True
+        try:
+            data = await self._umr200_bad_offsets_store.async_load()
+        except Exception as err:  # noqa: BLE001 - opslag mag nooit setup breken
+            # Een leeg/ontbrekend bestand geeft GEEN exception (async_load geeft
+            # dan None); komen we hier, dan is de opslag echt stuk. Zichtbaar
+            # melden, want dan valt de fix stil terug op per-sessie leren.
+            _LOGGER.warning(
+                "UMR200 bad-offset-opslag kon niet geladen worden (%s); de "
+                "blacklist start leeg en wordt per sessie opnieuw geleerd", err,
+            )
+            return
+        if data and isinstance(data.get("bad_offsets"), list):
+            self._umr200_bad_offsets.update(str(k) for k in data["bad_offsets"])
+            if self._umr200_bad_offsets:
+                _LOGGER.debug(
+                    "UMR200 bad-offset-blacklist geladen uit opslag: %d offset(s) "
+                    "worden bij de seed-poll overgeslagen",
+                    len(self._umr200_bad_offsets),
+                )
+
+    async def _persist_bad_offsets(self) -> None:
+        """Bewaar de huidige UMR200 dode-offset-blacklist over herstarts heen."""
+        try:
+            await self._umr200_bad_offsets_store.async_save(
+                {"bad_offsets": sorted(self._umr200_bad_offsets)}
+            )
+        except Exception as err:  # noqa: BLE001 - opslag mag nooit de poll breken
+            # Persistentie is juist het doel: lukt opslaan niet, dan werkt de
+            # blokkering alleen deze sessie. Zichtbaar melden i.p.v. verstoppen.
+            _LOGGER.warning(
+                "UMR200 bad-offset-blacklist kon niet bewaard worden (%s); de "
+                "blokkering geldt alleen deze sessie en moet na herstart opnieuw "
+                "geleerd worden", err,
+            )
 
     def get_ventilation_output(self, dsuid: str, offset: int) -> dict | None:
         """Last-known {'raw', 'pct'} for a UMR200 output, or None if not polled yet."""
