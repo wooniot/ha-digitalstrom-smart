@@ -9,7 +9,9 @@ Pro tier: climate, outdoor sensors, rain detection, device blink
 Developed by Woon IoT BV - https://wooniot.nl
 """
 
+import asyncio
 import logging
+import time as _time
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST, CONF_PORT, EVENT_HOMEASSISTANT_STOP
@@ -43,6 +45,15 @@ from . import (  # noqa: F401
 
 _LOGGER = logging.getLogger(__name__)
 
+# Harde bovengrens op de setup van de config entry. async_setup_entry wachtte
+# voorheen onbeperkt op connect/structure/first_refresh; viel één van die calls
+# stil (dSS herstart, ds485-bus nog niet klaar), dan bleef HA minutenlang
+# "Waiting for integrations" tonen zonder enige logregel — René zag 46 min
+# stilte (19 okt 2026). Met deze time-out eindigt setup gegarandeerd en laat
+# ConfigEntryNotReady HA het netjes opnieuw proberen met backoff. Ruim boven de
+# normale 10 s - 2 min, ver onder de waargenomen hang.
+SETUP_TIMEOUT = 240
+
 
 def _clamp_interval(value) -> int:
     """Clamp a user-supplied poll interval to the safe range.
@@ -66,6 +77,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Digital Strom Smart from a config entry."""
     hass.data.setdefault(DOMAIN, {})
 
+    # René (19 okt 2026): markeer begin en einde van de setup met een INFO-regel
+    # plus duur. Bij de herstart van 19:48 kwam er geen "Connected to dSS" en geen
+    # "Waiting for integrations" -- zonder deze markers was niet te zien of
+    # async_setup_entry ueberhaupt liep of waar hij bleef hangen.
+    _t0 = _time.monotonic()
+    _LOGGER.info(
+        "Digital Strom setup gestart (host %s)", entry.data.get(CONF_HOST, "?")
+    )
+
     # Create API client (local connection only)
     api = DigitalStromApi(
         host=entry.data[CONF_HOST],
@@ -73,161 +93,190 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         app_token=entry.data[CONF_APP_TOKEN],
     )
 
-    # Connect. Distinguish a dead/invalid app token (→ reauth) from a plain
-    # connection failure (→ retry). A dSS firmware update can invalidate the
-    # stored app token; without this split HA would just keep failing setup.
+    # Harde time-out om het kritieke setup-pad (connect, structuur, eerste
+    # refresh, entiteit-bepalende fetches). Valt een van die stappen stil, dan
+    # breekt de time-out de setup af en laat ConfigEntryNotReady HA het netjes
+    # opnieuw proberen i.p.v. 46 min stil te blijven hangen (René, 19 okt 2026).
+    _setup_timeout = asyncio.timeout(SETUP_TIMEOUT)
     try:
-        await api.connect()
-    except DigitalStromAuthError as err:
-        await api.close()
-        _LOGGER.warning("dSS app token rejected — re-authentication required: %s", err)
-        raise ConfigEntryAuthFailed(
-            "Digital Strom app token is no longer valid (often after a dSS "
-            "firmware update). Please re-authorise a new token in the dSS."
-        ) from err
-    except DigitalStromApiError as err:
-        await api.close()
-        raise ConfigEntryNotReady(f"Cannot connect to dSS at {entry.data[CONF_HOST]}: {err}") from err
+        async with _setup_timeout:
+            # Connect. Distinguish a dead/invalid app token (reauth) from a plain
+            # connection failure (retry). A dSS firmware update can invalidate the
+            # stored app token; without this split HA would just keep failing setup.
+            try:
+                await api.connect()
+            except DigitalStromAuthError as err:
+                await api.close()
+                _LOGGER.warning("dSS app token rejected -- re-authentication required: %s", err)
+                raise ConfigEntryAuthFailed(
+                    "Digital Strom app token is no longer valid (often after a dSS "
+                    "firmware update). Please re-authorise a new token in the dSS."
+                ) from err
+            except DigitalStromApiError as err:
+                await api.close()
+                raise ConfigEntryNotReady(f"Cannot connect to dSS at {entry.data[CONF_HOST]}: {err}") from err
 
-    # Get structure
-    try:
-        structure = await api.get_structure()
-    except DigitalStromAuthError as err:
-        await api.close()
-        _LOGGER.warning("dSS rejected token while reading structure: %s", err)
-        raise ConfigEntryAuthFailed(
-            "Digital Strom app token is no longer valid. Please re-authorise."
-        ) from err
-    except DigitalStromApiError as err:
-        await api.close()
-        raise ConfigEntryNotReady(f"Cannot read structure from dSS: {err}") from err
+            # Get structure
+            try:
+                structure = await api.get_structure()
+            except DigitalStromAuthError as err:
+                await api.close()
+                _LOGGER.warning("dSS rejected token while reading structure: %s", err)
+                raise ConfigEntryAuthFailed(
+                    "Digital Strom app token is no longer valid. Please re-authorise."
+                ) from err
+            except DigitalStromApiError as err:
+                await api.close()
+                raise ConfigEntryNotReady(f"Cannot read structure from dSS: {err}") from err
 
-    # Auto-enable zones created in the dSS after initial setup (#28).
-    # CONF_ENABLED_ZONES is a snapshot taken at first setup; a zone added later
-    # is not in that list, so the platforms filter it out and a plain reload
-    # never shows the new room. Merge any newly discovered zone ids into the
-    # enabled list here, before the platforms are set up. An empty list already
-    # means "all zones enabled", so only top up a non-empty (subset) list.
-    enabled_zones = list(entry.data.get(CONF_ENABLED_ZONES, []))
-    if enabled_zones:
-        apartment = structure.get("apartment", structure)
-        all_zone_ids = [
-            z.get("id", 0)
-            for z in apartment.get("zones", [])
-            if 0 < z.get("id", 0) < 65534
-        ]
-        new_zones = [z for z in all_zone_ids if z not in enabled_zones]
-        if new_zones:
-            _LOGGER.info(
-                "Discovered %d new dSS zone(s) since setup, enabling them: %s",
-                len(new_zones), new_zones,
+            # Auto-enable zones created in the dSS after initial setup (#28).
+            # CONF_ENABLED_ZONES is a snapshot taken at first setup; a zone added later
+            # is not in that list, so the platforms filter it out and a plain reload
+            # never shows the new room. Merge any newly discovered zone ids into the
+            # enabled list here, before the platforms are set up. An empty list already
+            # means "all zones enabled", so only top up a non-empty (subset) list.
+            enabled_zones = list(entry.data.get(CONF_ENABLED_ZONES, []))
+            if enabled_zones:
+                apartment = structure.get("apartment", structure)
+                all_zone_ids = [
+                    z.get("id", 0)
+                    for z in apartment.get("zones", [])
+                    if 0 < z.get("id", 0) < 65534
+                ]
+                new_zones = [z for z in all_zone_ids if z not in enabled_zones]
+                if new_zones:
+                    _LOGGER.info(
+                        "Discovered %d new dSS zone(s) since setup, enabling them: %s",
+                        len(new_zones), new_zones,
+                    )
+                    hass.config_entries.async_update_entry(
+                        entry,
+                        data={**entry.data, CONF_ENABLED_ZONES: enabled_zones + new_zones},
+                    )
+
+            # Create coordinator. Poll intervals are user-tunable (Options flow) so a
+            # large install can throttle the dSS request rate; both are clamped to a
+            # safe range and fall back to the defaults.
+            dss_id = entry.data.get(CONF_DSS_ID, "")
+            main_interval = _clamp_interval(
+                entry.options.get(CONF_MAIN_POLL_INTERVAL, DEFAULT_MAIN_POLL_INTERVAL)
             )
-            hass.config_entries.async_update_entry(
-                entry,
-                data={**entry.data, CONF_ENABLED_ZONES: enabled_zones + new_zones},
+            binary_interval = _clamp_interval(
+                entry.options.get(CONF_BINARY_POLL_INTERVAL, DEFAULT_BINARY_POLL_INTERVAL)
+            )
+            coordinator = DigitalStromCoordinator(
+                hass, api, structure, dss_id=dss_id,
+                main_poll_interval=main_interval,
+                binary_poll_interval=binary_interval,
             )
 
-    # Create coordinator. Poll intervals are user-tunable (Options flow) so a
-    # large install can throttle the dSS request rate; both are clamped to a
-    # safe range and fall back to the defaults.
-    dss_id = entry.data.get(CONF_DSS_ID, "")
-    main_interval = _clamp_interval(
-        entry.options.get(CONF_MAIN_POLL_INTERVAL, DEFAULT_MAIN_POLL_INTERVAL)
-    )
-    binary_interval = _clamp_interval(
-        entry.options.get(CONF_BINARY_POLL_INTERVAL, DEFAULT_BINARY_POLL_INTERVAL)
-    )
-    coordinator = DigitalStromCoordinator(
-        hass, api, structure, dss_id=dss_id,
-        main_poll_interval=main_interval,
-        binary_poll_interval=binary_interval,
-    )
+            # Opt-in: UMR200 ventilation outputs configured outside the dS Ventilation
+            # colour group (e.g. Joker/black). Parse the CSV option into a lowercased
+            # set so get_umr200_devices() admits them regardless of colour group. Must
+            # be set BEFORE the first refresh so the initial ventilation poll includes
+            # them. Empty by default: strict group gate unchanged.
+            raw_extra = entry.options.get(CONF_EXTRA_VENTILATION_DSUIDS, "") or ""
+            coordinator.extra_ventilation_dsuids = {
+                d.strip().lower() for d in raw_extra.replace("\n", ",").split(",") if d.strip()
+            }
+            if coordinator.extra_ventilation_dsuids:
+                _LOGGER.info(
+                    "Extra ventilation UMR200 dsuids (opt-in, outside Ventilation group): %s",
+                    ", ".join(sorted(coordinator.extra_ventilation_dsuids)),
+                )
 
-    # Opt-in: UMR200 ventilation outputs configured outside the dS Ventilation
-    # colour group (e.g. Joker/black). Parse the CSV option into a lowercased
-    # set so get_umr200_devices() admits them regardless of colour group. Must
-    # be set BEFORE the first refresh so the initial ventilation poll includes
-    # them. Empty by default → strict group gate unchanged.
-    raw_extra = entry.options.get(CONF_EXTRA_VENTILATION_DSUIDS, "") or ""
-    coordinator.extra_ventilation_dsuids = {
-        d.strip().lower() for d in raw_extra.replace("\n", ",").split(",") if d.strip()
-    }
-    if coordinator.extra_ventilation_dsuids:
-        _LOGGER.info(
-            "Extra ventilation UMR200 dsuids (opt-in, outside Ventilation group): %s",
-            ", ".join(sorted(coordinator.extra_ventilation_dsuids)),
-        )
+            # Check Pro license. Store the key + entry id on the coordinator so it can
+            # re-validate periodically (picks up a server-side rebind without a restart).
+            pro_key = entry.options.get(CONF_PRO_LICENSE, "")
+            coordinator.pro_license_key = pro_key
+            coordinator.entry_id = entry.entry_id
+            if pro_key:
+                license_result = await _check_pro_license(pro_key, dss_id)
+                coordinator.pro_enabled = license_result["valid"]
+                coordinator.license_info = license_result
+                if coordinator.pro_enabled:
+                    _LOGGER.info("Digital Strom Pro features enabled")
+                else:
+                    _LOGGER.warning(
+                        "Pro license invalid: reason=%s, dss_id_sent=%s, method=%s",
+                        license_result.get("reason"), license_result.get("dss_id_sent"),
+                        license_result.get("method"),
+                    )
+            else:
+                coordinator.license_info = {"valid": False, "reason": "no_key", "type": None, "method": None}
 
-    # Check Pro license. Store the key + entry id on the coordinator so it can
-    # re-validate periodically (picks up a server-side rebind without a restart).
-    pro_key = entry.options.get(CONF_PRO_LICENSE, "")
-    coordinator.pro_license_key = pro_key
-    coordinator.entry_id = entry.entry_id
-    if pro_key:
-        license_result = await _check_pro_license(pro_key, dss_id)
-        coordinator.pro_enabled = license_result["valid"]
-        coordinator.license_info = license_result
-        if coordinator.pro_enabled:
-            _LOGGER.info("Digital Strom Pro features enabled")
-        else:
+            # Surface a repair issue if a Pro key is set but no longer validates
+            # (e.g. license unbound after a firmware update). Cleared when valid.
+            sync_pro_issue(hass, entry.entry_id, bool(pro_key), coordinator.pro_enabled)
+
+            # René (19 okt 2026): laad de persistente UMR200 dode-offset-blacklist vóór de
+            # eerste refresh, zodat de seed-poll meteen weet welke getOutputValue-offsets
+            # structureel falen (invalid parameter) en die niet opnieuw op de ds485-bus zet.
+            await coordinator.async_load_bad_offsets()
+
+            # Initial data fetch
+            await coordinator.async_config_entry_first_refresh()
+
+            # --- Alleen de uitlezingen die bepalen WELKE entiteiten bestaan, lopen
+            # synchroon vóór het forwarden van de platforms. Alle overige (waarde-)
+            # uitlezingen gaan naar een achtergrondtaak (zie async_startup_fetches),
+            # zodat de setup van de config entry binnen 1-2 min klaar is en HA niet
+            # minutenlang "Waiting for integrations to complete setup" toont.
+            # (René, 19 okt 2026 -- diagnose trage setup bij herstart.)
+            #
+            # Let op: scènenamen, user actions/states, custom states en timed events
+            # worden door de platforms uitgelezen om de BIJBEHORENDE entiteiten AAN TE
+            # MAKEN (scene/button/switch/binary_sensor/sensor). Als die pas na het
+            # forwarden binnenkomen, ontbreken die entiteiten tot een reload -- dus die
+            # vier blijven bewust op het kritieke pad. De zware per-(zone,groep) lus in
+            # fetch_scene_names is daarom geparallelliseerd i.p.v. verplaatst.
+
+            # Scene names (gates scene entities) -- best-effort, geparallelliseerd.
+            try:
+                await coordinator.fetch_scene_names()
+            except Exception as err:
+                _LOGGER.warning("Scene name fetch failed (non-fatal): %s", err)
+
+            # User Defined Actions/States + custom states + timed events -- bepalen
+            # welke button/switch/binary_sensor/sensor-entiteiten bestaan.
+            try:
+                await coordinator.fetch_user_actions()
+            except Exception as err:
+                _LOGGER.warning("User actions fetch failed (non-fatal): %s", err)
+            try:
+                await coordinator.fetch_user_states()
+            except Exception as err:
+                _LOGGER.warning("User states fetch failed (non-fatal): %s", err)
+            try:
+                await coordinator.fetch_custom_states()
+            except Exception as err:
+                _LOGGER.warning("Custom states fetch failed (non-fatal): %s", err)
+            try:
+                await coordinator.fetch_timed_events()
+            except Exception as err:
+                _LOGGER.warning("Timed events fetch failed (non-fatal): %s", err)
+    except TimeoutError as err:
+        # asyncio.timeout vuurt TimeoutError (sinds 3.11 == asyncio.TimeoutError).
+        # LET OP: een interne aiohttp-request-time-out (15 s per call) gooit óók
+        # TimeoutError. Alleen als ONS setup-budget echt verlopen is (expired())
+        # melden we "setup overschreed 240 s"; anders was het een korte interne
+        # time-out die we niet als het volle budget mogen rapporteren (bevinding
+        # externe code-review, 19 okt 2026). Beide gevallen -> ConfigEntryNotReady
+        # zodat HA opnieuw probeert.
+        await api.close()
+        if _setup_timeout.expired():
             _LOGGER.warning(
-                "Pro license invalid: reason=%s, dss_id_sent=%s, method=%s",
-                license_result.get("reason"), license_result.get("dss_id_sent"),
-                license_result.get("method"),
+                "Digital Strom setup overschreed %d s en is afgebroken -- HA probeert "
+                "het zo opnieuw (host %s)", SETUP_TIMEOUT, entry.data.get(CONF_HOST, "?"),
             )
-    else:
-        coordinator.license_info = {"valid": False, "reason": "no_key", "type": None, "method": None}
-
-    # Surface a repair issue if a Pro key is set but no longer validates
-    # (e.g. license unbound after a firmware update). Cleared when valid.
-    sync_pro_issue(hass, entry.entry_id, bool(pro_key), coordinator.pro_enabled)
-
-    # René (19 okt 2026): laad de persistente UMR200 dode-offset-blacklist vóór de
-    # eerste refresh, zodat de seed-poll meteen weet welke getOutputValue-offsets
-    # structureel falen (invalid parameter) en die niet opnieuw op de ds485-bus zet.
-    await coordinator.async_load_bad_offsets()
-
-    # Initial data fetch
-    await coordinator.async_config_entry_first_refresh()
-
-    # --- Alleen de uitlezingen die bepalen WELKE entiteiten bestaan, lopen
-    # synchroon vóór het forwarden van de platforms. Alle overige (waarde-)
-    # uitlezingen gaan naar een achtergrondtaak (zie async_startup_fetches),
-    # zodat de setup van de config entry binnen 1-2 min klaar is en HA niet
-    # minutenlang "Waiting for integrations to complete setup" toont.
-    # (René, 19 okt 2026 — diagnose trage setup bij herstart.)
-    #
-    # Let op: scènenamen, user actions/states, custom states en timed events
-    # worden door de platforms uitgelezen om de BIJBEHORENDE entiteiten AAN TE
-    # MAKEN (scene/button/switch/binary_sensor/sensor). Als die pas na het
-    # forwarden binnenkomen, ontbreken die entiteiten tot een reload — dus die
-    # vier blijven bewust op het kritieke pad. De zware per-(zone,groep) lus in
-    # fetch_scene_names is daarom geparallelliseerd i.p.v. verplaatst.
-
-    # Scene names (gates scene entities) — best-effort, geparallelliseerd.
-    try:
-        await coordinator.fetch_scene_names()
-    except Exception as err:
-        _LOGGER.warning("Scene name fetch failed (non-fatal): %s", err)
-
-    # User Defined Actions/States + custom states + timed events — bepalen
-    # welke button/switch/binary_sensor/sensor-entiteiten bestaan.
-    try:
-        await coordinator.fetch_user_actions()
-    except Exception as err:
-        _LOGGER.warning("User actions fetch failed (non-fatal): %s", err)
-    try:
-        await coordinator.fetch_user_states()
-    except Exception as err:
-        _LOGGER.warning("User states fetch failed (non-fatal): %s", err)
-    try:
-        await coordinator.fetch_custom_states()
-    except Exception as err:
-        _LOGGER.warning("Custom states fetch failed (non-fatal): %s", err)
-    try:
-        await coordinator.fetch_timed_events()
-    except Exception as err:
-        _LOGGER.warning("Timed events fetch failed (non-fatal): %s", err)
+            raise ConfigEntryNotReady(
+                f"dSS setup did not complete within {SETUP_TIMEOUT}s"
+            ) from err
+        _LOGGER.warning(
+            "Interne time-out tijdens dSS setup (host %s) -- HA probeert het zo "
+            "opnieuw: %r", entry.data.get(CONF_HOST, "?"), err, exc_info=True,
+        )
+        raise ConfigEntryNotReady(f"Time-out tijdens dSS setup: {err!r}") from err
 
     # Store
     hass.data[DOMAIN][entry.entry_id] = {
@@ -267,6 +316,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # Register services
     _register_services(hass)
 
+    _LOGGER.info(
+        "Digital Strom setup klaar in %.1f s (host %s); waarde-seed + events lopen "
+        "nu op de achtergrond", _time.monotonic() - _t0, entry.data.get(CONF_HOST, "?"),
+    )
     return True
 
 

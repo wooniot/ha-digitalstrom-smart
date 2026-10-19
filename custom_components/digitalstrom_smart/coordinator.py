@@ -548,6 +548,16 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
             # vangnet-teller hierop, zodat de hoofdcyclus die stand niet nóg eens
             # leest (René #2, 19 okt 2026) en het 600s-vangnet vanaf hier telt.
             self._last_joker_confirm = _time.time()
+            # Maak die eerste volledige uitlezing zichtbaar in het log: René (19 okt
+            # 2026) zag de eerste "volledige cyclus" pas ~15 min na herstart, omdat
+            # de 600s-vangnetteller hier start en de seed-tijd daar bovenop komt. Dit
+            # is gewenst gedrag (de seed DEED de volledige joker/ventilatie-uitlezing),
+            # maar zonder deze regel leek er 10-15 min niets te gebeuren.
+            _LOGGER.info(
+                "Startup-seed klaar: joker + ventilatie volledig uitgelezen; "
+                "vangnet-cyclus telt vanaf nu (volgende over %d s)",
+                self._joker_confirm_interval,
+            )
 
             # Fetch all dSS /usr/states in one call: fire/rain/alarm + day-night/holiday +
             # motion per zone + malfunction/service. Plus weather-service outdoor + sun.
@@ -688,6 +698,11 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
         # (zone_id, dsuid, dev) waarvan de eerste seed 'false' was en die na settle
         # opnieuw gecheckt moeten worden — alleen relevant bij (her)start.
         pending_confirm: list[tuple[int, str, dict]] = []
+        # René (19 okt 2026, punt 6): verzamel de nieuw-divergente actoren van DEZE
+        # cyclus en log er één samenvattende WARNING over i.p.v. een losse WARNING per
+        # actor. Omdat _joker_divergence_warned bij elke start leeg is, gaf dat anders
+        # bij iedere herstart opnieuw een regen van WARNING-regels (log onleesbaar).
+        newly_divergent: list[str] = []
         for zone_id in list(self.zones):
             for dev in self.get_joker_actuators_in_zone(zone_id):
                 dsuid = dev.get("dsuid")
@@ -738,8 +753,11 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
                             # Zolang de episode duurt → debug; nieuwe episode → weer WARNING.
                             if dsuid not in self._joker_divergence_warned:
                                 self._joker_divergence_warned.add(dsuid)
+                                # Per-actor detail op DEBUG; de samenvattende WARNING
+                                # na de lus noemt het aantal + namen (René punt 6).
+                                newly_divergent.append(dev.get("name", "") or dsuid[:12])
                                 if vent_rest:
-                                    _LOGGER.warning(
+                                    _LOGGER.debug(
                                         "[DS-DEBUG] Ventilatie-actor %s (%s) DIVERGENTIE: getState.isOn=true "
                                         "maar getOutputValue=%s op/onder %d%%-rustdrempel (fysiek UIT) "
                                         "-> gecorrigeerd naar UIT (gelijk aan ventilatiestatus-sensor)",
@@ -747,7 +765,7 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
                                         VENTILATION_ON_THRESHOLD_PCT,
                                     )
                                 else:
-                                    _LOGGER.warning(
+                                    _LOGGER.debug(
                                         "[DS-DEBUG] Joker-actor %s (%s) DIVERGENTIE: getState.isOn=true "
                                         "maar getOutputValue=0 (relais fysiek UIT) -> gecorrigeerd naar UIT",
                                         dsuid, dev.get("name", ""),
@@ -812,6 +830,17 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
                         )
                 except Exception as err:
                     _LOGGER.debug("Joker-actor live state fetch faalde %s: %s", dsuid, err)
+
+        # Eén samenvattende WARNING per cyclus met het aantal + namen van de nieuw
+        # gedetecteerde divergente actoren (René punt 6, 19 okt 2026). De per-actor
+        # details staan op DEBUG. Een blijvende divergentie wordt zo nog steeds elke
+        # poll gecorrigeerd, maar vult het log niet langer bij elke herstart.
+        if newly_divergent:
+            _LOGGER.warning(
+                "DIVERGENTIE: %d actor(en) melden getState.isOn=true terwijl de relais-"
+                "output fysiek UIT staat -> gecorrigeerd naar UIT: %s (details op DEBUG)",
+                len(newly_divergent), ", ".join(newly_divergent),
+            )
 
         if not pending_confirm:
             return
@@ -2711,6 +2740,14 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
                 raise UpdateFailed(f"Re-auth failed: {err}") from err
 
         except DigitalStromApiError as err:
+            # René (19 okt 2026): log de onderliggende fout + stack één keer per
+            # fail-episode (zolang de vorige poll nog lukte). Zo is te zien WAT er
+            # misging bij die ene mislukte eerste refresh (success: False), zonder
+            # het log vol te schrijven zolang de storing aanhoudt.
+            if self.last_update_success:
+                _LOGGER.warning(
+                    "dSS-poll mislukt (eerste keer deze episode): %s", err, exc_info=True
+                )
             raise UpdateFailed(f"Poll failed: {err}") from err
 
         # Send anonymous telemetry ping (at startup + every 24h)
