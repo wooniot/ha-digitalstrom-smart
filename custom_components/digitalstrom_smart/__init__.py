@@ -185,38 +185,28 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # Initial data fetch
     await coordinator.async_config_entry_first_refresh()
 
-    # Fetch scene names (best-effort, don't block setup)
+    # --- Alleen de uitlezingen die bepalen WELKE entiteiten bestaan, lopen
+    # synchroon vóór het forwarden van de platforms. Alle overige (waarde-)
+    # uitlezingen gaan naar een achtergrondtaak (zie async_startup_fetches),
+    # zodat de setup van de config entry binnen 1-2 min klaar is en HA niet
+    # minutenlang "Waiting for integrations to complete setup" toont.
+    # (René, 19 okt 2026 — diagnose trage setup bij herstart.)
+    #
+    # Let op: scènenamen, user actions/states, custom states en timed events
+    # worden door de platforms uitgelezen om de BIJBEHORENDE entiteiten AAN TE
+    # MAKEN (scene/button/switch/binary_sensor/sensor). Als die pas na het
+    # forwarden binnenkomen, ontbreken die entiteiten tot een reload — dus die
+    # vier blijven bewust op het kritieke pad. De zware per-(zone,groep) lus in
+    # fetch_scene_names is daarom geparallelliseerd i.p.v. verplaatst.
+
+    # Scene names (gates scene entities) — best-effort, geparallelliseerd.
     try:
         await coordinator.fetch_scene_names()
     except Exception as err:
         _LOGGER.warning("Scene name fetch failed (non-fatal): %s", err)
 
-    # Fetch initial states (best-effort)
-    try:
-        await coordinator.fetch_initial_states()
-    except Exception as err:
-        _LOGGER.warning("Initial state fetch failed (non-fatal): %s", err)
-
-    # Fetch device sensor values (Ulux etc.) - initial load, then polled + events
-    try:
-        await coordinator.fetch_device_sensors()
-    except Exception as err:
-        _LOGGER.warning("Device sensor fetch failed (non-fatal): %s", err)
-
-    # One-time startup poll for per-device power/energy (SW-KL200 etc.)
-    # After this, deviceSensorValue events keep values current.
-    try:
-        await coordinator.fetch_device_power_sensors()
-    except Exception as err:
-        _LOGGER.warning("Device power sensor fetch failed (non-fatal): %s", err)
-
-    # Fetch per-circuit (dSM) power + cumulative energy
-    try:
-        await coordinator.fetch_circuit_data()
-    except Exception as err:
-        _LOGGER.warning("Circuit data fetch failed (non-fatal): %s", err)
-
-    # Fetch User Defined Actions and States (free, apartment-level)
+    # User Defined Actions/States + custom states + timed events — bepalen
+    # welke button/switch/binary_sensor/sensor-entiteiten bestaan.
     try:
         await coordinator.fetch_user_actions()
     except Exception as err:
@@ -233,42 +223,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         await coordinator.fetch_timed_events()
     except Exception as err:
         _LOGGER.warning("Timed events fetch failed (non-fatal): %s", err)
-
-    # Fetch initial apartment presence state (free + pro — one cheap API call)
-    try:
-        await coordinator.fetch_apartment_state()
-    except Exception as err:
-        _LOGGER.debug("Apartment state fetch failed (non-fatal): %s", err)
-
-    # Pro: fetch climate and sensor data
-    if coordinator.pro_enabled:
-        try:
-            await coordinator.fetch_climate_data()
-        except Exception as err:
-            _LOGGER.warning("Climate data fetch failed (non-fatal): %s", err)
-        try:
-            await coordinator.fetch_sensor_data()
-        except Exception as err:
-            _LOGGER.warning("Sensor data fetch failed (non-fatal): %s", err)
-
-        # Log detected climate zones for diagnostics
-        climate_zones = [
-            (zid, zi["name"]) for zid, zi in coordinator.zones.items()
-            if coordinator.has_temp_control(zid)
-        ]
-        if climate_zones:
-            _LOGGER.info(
-                "Climate zones detected: %s",
-                ", ".join(f"{name} (zone {zid})" for zid, name in climate_zones),
-            )
-        else:
-            _LOGGER.warning("No climate zones detected — check dSS temperature control config")
-
-    # Start event listener as background task (must not block HA bootstrap)
-    entry.async_create_background_task(
-        hass, coordinator.start_event_listener(),
-        f"{DOMAIN}_event_listener",
-    )
 
     # Store
     hass.data[DOMAIN][entry.entry_id] = {
@@ -293,6 +247,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if coordinator.pro_enabled:
         platforms.extend(PLATFORMS_PRO)
     await hass.config_entries.async_forward_entry_setups(entry, platforms)
+
+    # Best-effort waarde-uitlezingen (zone-scènestand, device-sensoren, per-circuit
+    # vermogen, climate) NU op de achtergrond — de entiteiten bestaan al en krijgen
+    # hun waarde enkele seconden later (async_startup_fetches port daarna de
+    # listeners). Die taak start óók de event-listener, bewust ná de startup-seed,
+    # zodat een seed geen vers event overschrijft. Dit haalt de minuten durende
+    # seed-lussen van het kritieke setup-pad af (René, 19 okt 2026).
+    entry.async_create_background_task(
+        hass, coordinator.async_startup_fetches(),
+        f"{DOMAIN}_startup_fetches",
+    )
 
     # Register services
     _register_services(hass)

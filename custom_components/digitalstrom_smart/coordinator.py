@@ -26,6 +26,7 @@ from .const import (
     POLL_INTERVAL_BINARY,
     JOKER_CONFIRM_INTERVAL,
     CLIMATE_CONFIRM_INTERVAL,
+    STARTUP_FETCH_CONCURRENCY,
     RECONNECT_INITIAL,
     RECONNECT_MAX,
     GROUP_LIGHT,
@@ -136,6 +137,13 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
         self._climate_confirm_interval = CLIMATE_CONFIRM_INTERVAL
         self._last_joker_confirm: float = 0.0   # throttle joker-actor live-confirm
         self._last_climate_poll: float = 0.0    # throttle per-zone climate-status
+        # True zolang de eenmalige startup-seed (fetch_initial_states, met de
+        # confirm_startup joker+ventilatie-settle) nog niet is gedraaid. Zolang
+        # dit True is slaat de hoofdcyclus de joker/ventilatie-vangnetleesronde
+        # over, zodat die stand NIET dubbel wordt uitgelezen vlak na (her)start
+        # (de seed in __init__ deed dat al). Wordt in een finally weer vrijgegeven,
+        # dus een mislukte seed laat het vangnet gewoon hervatten (René, 19 okt 2026).
+        self._startup_seed_pending: bool = True
 
         # State tracking: {(zone_id, group): {"scene": int, "value": int, "is_on": bool}}
         self._zone_states: dict[tuple[int, int], dict[str, Any]] = {}
@@ -423,10 +431,21 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
         Uses getReachableScenes which returns both scene numbers AND names in one call.
         Falls back to sceneGetName per scene if getReachableScenes fails.
         """
-        for zone_id, zone_info in self.zones.items():
-            for group in zone_info["groups"]:
-                if group not in SCENE_GROUPS:
-                    continue
+        # Scènenamen bepalen WELKE scene-entiteiten bestaan (scene.py leest
+        # scene_names/reachable_scenes), dus dit moet vóór het forwarden van de
+        # platforms klaar zijn. De per-(zone,groep) lus was serieel en bij veel
+        # zones de grootste blokkade bij setup. Parallel met een kleine limiet
+        # zodat de dSS-bus niet overbelast raakt (René, 19 okt 2026).
+        targets = [
+            (zone_id, group)
+            for zone_id, zone_info in self.zones.items()
+            for group in zone_info["groups"]
+            if group in SCENE_GROUPS
+        ]
+        sem = asyncio.Semaphore(STARTUP_FETCH_CONCURRENCY)
+
+        async def _fetch_one(zone_id: int, group: int) -> None:
+            async with sem:
                 try:
                     data = await self.api.get_reachable_scenes(zone_id, group)
                     scenes = data.get("reachableScenes", [])
@@ -456,18 +475,32 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
                 except Exception as err:
                     _LOGGER.debug("Scene fetch error zone %d group %d: %s", zone_id, group, err)
 
+        await asyncio.gather(
+            *(_fetch_one(zone_id, group) for zone_id, group in targets),
+            return_exceptions=True,
+        )
+
     async def fetch_initial_states(self) -> None:
         """Fetch initial scene states for all zones via getLastCalledScene.
 
         Only fetch for groups that have actual devices (reduces bus load).
         Also polls binary input states for contact/sensor devices.
         """
-        for zone_id, zone_info in self.zones.items():
-            if not zone_info["devices"]:
-                continue
-            for group in zone_info["groups"]:
-                if group not in (GROUP_LIGHT, GROUP_SHADE, GROUP_HEATING, GROUP_JOKER):
-                    continue
+        # getLastCalledScene per (zone,groep) — was serieel en bij veel zones een
+        # van de grootste vertragers bij setup. Parallel met dezelfde kleine limiet
+        # (René, #3, 19 okt 2026). Alleen groepen met echte devices, om buslast laag
+        # te houden.
+        targets = [
+            (zone_id, group)
+            for zone_id, zone_info in self.zones.items()
+            if zone_info["devices"]
+            for group in zone_info["groups"]
+            if group in (GROUP_LIGHT, GROUP_SHADE, GROUP_HEATING, GROUP_JOKER)
+        ]
+        sem = asyncio.Semaphore(STARTUP_FETCH_CONCURRENCY)
+
+        async def _seed_one(zone_id: int, group: int) -> None:
+            async with sem:
                 try:
                     scene = await self.api.get_last_called_scene(zone_id, group)
                     if scene >= 0:
@@ -479,27 +512,126 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
                         zone_id, group, err,
                     )
 
+        await asyncio.gather(
+            *(_seed_one(zone_id, group) for zone_id, group in targets),
+            return_exceptions=True,
+        )
+
         # Poll binary input states for all Joker sensor devices
         await self.poll_binary_input_states()
 
-        # Seed de echte output-stand van elke Joker-ACTOR LIVE (na de bulk-poll, zodat de
-        # live-waarde de stale cache-waarde overschrijft bij (her)start). René 18 aug 2026.
-        # confirm_startup=True: een 'false'-seed bij boot wordt na een settle-delay nog één
-        # keer bevestigd (getState + getOutputValue), tegen de pre-settle boot-'false' die
-        # René's SW-KL fout op UIT zette (22 aug 2026).
-        await self.fetch_joker_actuator_states(confirm_startup=True)
+        try:
+            # Seed de echte output-stand van elke Joker-ACTOR LIVE (na de bulk-poll, zodat de
+            # live-waarde de stale cache-waarde overschrijft bij (her)start). René 18 aug 2026.
+            # confirm_startup=True: een 'false'-seed bij boot wordt na een settle-delay nog één
+            # keer bevestigd (getState + getOutputValue), tegen de pre-settle boot-'false' die
+            # René's SW-KL fout op UIT zette (22 aug 2026).
+            await self.fetch_joker_actuator_states(confirm_startup=True)
 
-        # Seed SW-UMR200 ventilation output levels so the entities have a value
-        # immediately (getOutputValue per output offset — the direct relay read).
-        await self.fetch_ventilation_outputs()
+            # Seed SW-UMR200 ventilation output levels so the entities have a value
+            # immediately (getOutputValue per output offset — the direct relay read).
+            await self.fetch_ventilation_outputs()
 
-        # Fetch all dSS /usr/states in one call: fire/rain/alarm + day-night/holiday +
-        # motion per zone + malfunction/service. Plus weather-service outdoor + sun.
-        await self.fetch_dss_states()
-        await self.fetch_outdoor_weather()
+            # Deze seed IS de startup-uitlezing van joker + ventilatie. Zet de
+            # vangnet-teller hierop, zodat de hoofdcyclus die stand niet nóg eens
+            # leest (René #2, 19 okt 2026) en het 600s-vangnet vanaf hier telt.
+            self._last_joker_confirm = _time.time()
 
-        # Poll presence (Present/Absent/...) at startup — events don't fire on (re)start.
-        await self.fetch_apartment_state()
+            # Fetch all dSS /usr/states in one call: fire/rain/alarm + day-night/holiday +
+            # motion per zone + malfunction/service. Plus weather-service outdoor + sun.
+            await self.fetch_dss_states()
+            await self.fetch_outdoor_weather()
+
+            # Poll presence (Present/Absent/...) at startup — events don't fire on (re)start.
+            await self.fetch_apartment_state()
+        finally:
+            # Startup-seed is (met of zonder fout) geweest: geef de hoofdcyclus
+            # het joker/ventilatie-vangnet weer vrij. Bij een fout vóór de stamp
+            # hierboven staat _last_joker_confirm nog op 0, dus leest de eerstvolgende
+            # hoofdcyclus de jokers alsnog — self-healing.
+            self._startup_seed_pending = False
+
+    async def async_startup_fetches(self) -> None:
+        """Best-effort startup-uitlezingen die GEEN entiteiten aanmaken.
+
+        Draait als achtergrondtaak NÁ async_forward_entry_setups, zodat de setup
+        van de config entry klaar is binnen 1-2 min en HA niet langer
+        "Waiting for integrations to complete setup" toont (René, 19 okt 2026).
+
+        Hier staan uitsluitend uitlezingen die alleen WAARDEN seeden — de
+        entiteiten bestaan dan al (aangemaakt door de platforms op basis van de
+        structuur + de scène-/user-/timer-definities die synchroon in
+        async_setup_entry zijn opgehaald). De entiteiten tonen hun waarde dus
+        enkele seconden later; dat is acceptabel en vervangt geen entiteit.
+
+        De zware, per-zone/-device lussen (fetch_initial_states met de
+        getLastCalledScene-seed en de confirm_startup joker/ventilatie-settle)
+        zitten hier, want juist die duurden minuten op de kritieke pad.
+        """
+        # Scene-/zone-stand seeden (getLastCalledScene) + joker/ventilatie-settle.
+        try:
+            await self.fetch_initial_states()
+        except Exception as err:
+            _LOGGER.warning("Initial state fetch failed (non-fatal): %s", err)
+
+        # Device sensor values (Ulux etc.) — polled + event-updated hierna.
+        try:
+            await self.fetch_device_sensors()
+        except Exception as err:
+            _LOGGER.warning("Device sensor fetch failed (non-fatal): %s", err)
+
+        # One-time startup poll for per-device power/energy (SW-KL200 etc.).
+        try:
+            await self.fetch_device_power_sensors()
+        except Exception as err:
+            _LOGGER.warning("Device power sensor fetch failed (non-fatal): %s", err)
+
+        # Per-circuit (dSM) power + cumulative energy (waarden; circuits zelf zijn
+        # al geseed door de eerste hoofdcyclus, vóór het forwarden).
+        try:
+            await self.fetch_circuit_data()
+        except Exception as err:
+            _LOGGER.warning("Circuit data fetch failed (non-fatal): %s", err)
+
+        # Pro: climate + apartment sensor data (ook door de eerste hoofdcyclus
+        # gedaan; hier nogmaals best-effort voor een snelle eerste waarde).
+        if self.pro_enabled:
+            try:
+                await self.fetch_climate_data()
+            except Exception as err:
+                _LOGGER.warning("Climate data fetch failed (non-fatal): %s", err)
+            try:
+                await self.fetch_sensor_data()
+            except Exception as err:
+                _LOGGER.warning("Sensor data fetch failed (non-fatal): %s", err)
+
+            # Log detected climate zones for diagnostics
+            climate_zones = [
+                (zid, zi["name"]) for zid, zi in self.zones.items()
+                if self.has_temp_control(zid)
+            ]
+            if climate_zones:
+                _LOGGER.info(
+                    "Climate zones detected: %s",
+                    ", ".join(f"{name} (zone {zid})" for zid, name in climate_zones),
+                )
+            else:
+                _LOGGER.warning(
+                    "No climate zones detected — check dSS temperature control config"
+                )
+
+        # Deze seeds draaien NÁ async_forward_entry_setups, dus de entiteiten
+        # bestaan al. Zonder een expliciete notify zouden ze hun geseede waarde
+        # pas bij de volgende hoofdcyclus (tot 10 min) tonen. Eén keer de
+        # listeners porren zodat de verse startwaarden meteen zichtbaar zijn.
+        self.async_update_listeners()
+
+        # Pas NU de event-listener starten — ná de startup-seed. Zo kan een
+        # getLastCalledScene/getState-seed geen vers callScene/stateChange-event
+        # overschrijven (de seed liep vóór deze refactor ook altijd vóór de
+        # events). De long-poll + binary/power-polls blijven, net als voorheen,
+        # hass-gebonden achtergrondtaken binnen start_event_listener().
+        await self.start_event_listener()
 
     async def fetch_joker_actuator_states(self, confirm_startup: bool = False) -> None:
         """Eenmalige LIVE uitlezing van de echte output-stand van elke Joker-ACTOR.
@@ -2459,7 +2591,10 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
             # ~2×N calls/cyclus (getState + getOutputValue per actor), dus draait als
             # vangnet op ~1×/min i.p.v. elke hoofdcyclus (René, 26 aug 2026).
             poll_now = _time.time()
-            if poll_now - self._last_joker_confirm >= self._joker_confirm_interval:
+            if (
+                not self._startup_seed_pending
+                and poll_now - self._last_joker_confirm >= self._joker_confirm_interval
+            ):
                 self._last_joker_confirm = poll_now
                 await self.fetch_joker_actuator_states()
                 # SW-UMR200 ventilation output levels ride the same vangnet cadence

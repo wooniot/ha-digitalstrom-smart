@@ -472,6 +472,11 @@ POLL_INTERVAL_VANGNET = 60       # (vervallen) joker-actor confirm + climate-sta
 JOKER_CONFIRM_INTERVAL = 600     # getState + getOutputValue per joker-actor
 CLIMATE_CONFIRM_INTERVAL = 600   # getTemperatureControlStatus per zone
 
+# Parallellisme-limiet voor de per-(zone,groep) uitleeslussen bij setup
+# (getReachableScenes + getLastCalledScene). Beperkt het aantal gelijktijdige
+# dSS-calls zodat de bus bij start niet overbelast raakt (René, 19 okt 2026).
+STARTUP_FETCH_CONCURRENCY = 3
+
 # Bounds for the user-configurable poll intervals (Options flow).
 MIN_POLL_INTERVAL = 15
 MAX_POLL_INTERVAL = 300
