@@ -456,7 +456,21 @@ POLL_INTERVAL_BINARY = 30        # fallback reconcile for binary inputs
 # klimaatstatus tussendoor live. Ze hoeven dus niet elke 30s-hoofdcyclus mee;
 # 1×/min is ruim voldoende en halveert hun dSS-last op grotere installs
 # (René, 26 aug 2026). Op de default 30s-hoofdpoll valt dit op elke twééde cyclus.
-POLL_INTERVAL_VANGNET = 60       # joker-actor confirm + climate-status vangnet
+#
+# VERVALLEN (René, 19 okt 2026): de oude drempel _vangnet_due_threshold
+# (= POLL_INTERVAL_VANGNET − main_poll_interval/2 = 45s) ging ervan uit dat een
+# hoofdcyclus ~30s duurt. In de praktijk duurt een volledige update 70–200s, en
+# omdat de DataUpdateCoordinator cycli serieel draait (wacht tot de vorige klaar
+# is), is de tijd sinds de vorige run altijd > 45s. Daardoor liep het vangnet
+# alsnog ELKE cyclus. Opgelost met vaste absolute intervallen hieronder, los van
+# de hoofdpoll-duur. POLL_INTERVAL_VANGNET blijft alleen voor compat.
+POLL_INTERVAL_VANGNET = 60       # (vervallen) joker-actor confirm + climate-status vangnet
+
+# Vangnet-intervallen (seconden). Events houden deze waarden tussendoor live;
+# deze poll is puur het vangnet voor gemiste events. Vast absoluut interval,
+# onafhankelijk van hoe lang een hoofdcyclus daadwerkelijk duurt.
+JOKER_CONFIRM_INTERVAL = 600     # getState + getOutputValue per joker-actor
+CLIMATE_CONFIRM_INTERVAL = 600   # getTemperatureControlStatus per zone
 
 # Bounds for the user-configurable poll intervals (Options flow).
 MIN_POLL_INTERVAL = 15

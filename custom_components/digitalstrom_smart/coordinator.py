@@ -24,7 +24,8 @@ from .const import (
     signal_button_event,
     POLL_INTERVAL_ENERGY,
     POLL_INTERVAL_BINARY,
-    POLL_INTERVAL_VANGNET,
+    JOKER_CONFIRM_INTERVAL,
+    CLIMATE_CONFIRM_INTERVAL,
     RECONNECT_INITIAL,
     RECONNECT_MAX,
     GROUP_LIGHT,
@@ -125,12 +126,14 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
 
         # Vangnet-cadans voor de joker-actor live-confirm + climate-status-poll.
         # Beide zijn alleen vangnet (events houden ze tussendoor live), dus draaien
-        # ze op ~1×/min i.p.v. elke hoofdcyclus. De drempel is het vangnet-interval
-        # minus een halve hoofdcyclus, zodat het op de default 30s-poll robuust op
-        # elke twééde cyclus valt (i.p.v. door scheduler-drift naar 90s te springen).
-        # Nooit trager dan de hoofdcyclus zelf (als de user die > 60s zet).
-        self._vangnet_interval = max(POLL_INTERVAL_VANGNET, main_poll_interval)
-        self._vangnet_due_threshold = self._vangnet_interval - main_poll_interval / 2
+        # ze op een vast absoluut interval i.p.v. elke hoofdcyclus. De oude drempel
+        # (vangnet-interval − main_poll/2 = 45s) ging uit van een cyclus van ~30s;
+        # in de praktijk duurt een volledige update 70–200s en draait de coordinator
+        # cycli serieel, waardoor de tijd sinds de vorige run altijd > 45s was en het
+        # vangnet alsnog elke cyclus liep. Vaste intervallen lossen dat op, los van de
+        # werkelijke cyclusduur (René, 19 okt 2026).
+        self._joker_confirm_interval = JOKER_CONFIRM_INTERVAL
+        self._climate_confirm_interval = CLIMATE_CONFIRM_INTERVAL
         self._last_joker_confirm: float = 0.0   # throttle joker-actor live-confirm
         self._last_climate_poll: float = 0.0    # throttle per-zone climate-status
 
@@ -2456,7 +2459,7 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
             # ~2×N calls/cyclus (getState + getOutputValue per actor), dus draait als
             # vangnet op ~1×/min i.p.v. elke hoofdcyclus (René, 26 aug 2026).
             poll_now = _time.time()
-            if poll_now - self._last_joker_confirm >= self._vangnet_due_threshold:
+            if poll_now - self._last_joker_confirm >= self._joker_confirm_interval:
                 self._last_joker_confirm = poll_now
                 await self.fetch_joker_actuator_states()
                 # SW-UMR200 ventilation output levels ride the same vangnet cadence
@@ -2492,7 +2495,7 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
                 # getTemperatureControlValues-prefetch is al deze cyclus gedaan, dus
                 # blijft skip_temp_prefetch=True.
                 climate_now = _time.time()
-                if climate_now - self._last_climate_poll >= self._vangnet_due_threshold:
+                if climate_now - self._last_climate_poll >= self._climate_confirm_interval:
                     self._last_climate_poll = climate_now
                     await self.fetch_climate_data(skip_temp_prefetch=True)
                 await self.fetch_outdoor_weather(data=sensor_data)
