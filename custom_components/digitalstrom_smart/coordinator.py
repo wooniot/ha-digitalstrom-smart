@@ -864,6 +864,26 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
                                 dsuid[:12], dev.get("name", ""), seed_out_val,
                                 VENTILATION_ON_THRESHOLD_PCT,
                             )
+                        elif is_on and seed_out_val == 0:
+                            # REGRESSIE-FIX beta8 (René, 20 okt 2026). Een niet-ventilatie
+                            # Joker-actor die bij de seed getState.isOn=true maar
+                            # getOutputValue=0 geeft, staat fysiek UIT. Tot beta7 corrigeerde
+                            # de seed alléén ventilatie-units; een gewone divergente actor bleef
+                            # op resolved=is_on=True staan. De voorstel-3-skip (beta7) sloeg dan
+                            # op de eerste runtime-cyclus de getOutputValue-read over
+                            # (old_on==is_on==true en nog niet in de divergentie-set), waarna de
+                            # status de foute isOn=true volgde (bv. switch.garage_vorstvrijlint,
+                            # switch.badkamer_e_radiator_badkamer stonden ten onrechte AAN).
+                            # Door de seed meteen naar UIT te corrigeren wordt old_on False;
+                            # de skip (old_on==is_on) vervalt dan vanzelf en de runtime-cyclus
+                            # leest de actor weer uit (en telt 'm in de samenvattende WARNING).
+                            resolved = False
+                            self._device_on_states[dsuid] = False
+                            _LOGGER.info(
+                                "Joker-actor %s (%s): getState.isOn=true maar getOutputValue=0 "
+                                "(relais fysiek UIT) -> switch geseed als UIT",
+                                dsuid[:12], dev.get("name", ""),
+                            )
                     elif old_on != resolved:
                         # Externe wijziging die geen callScene-event opleverde (of gemist
                         # tijdens een event-loop reconnect): de 30s live getState-refresh
