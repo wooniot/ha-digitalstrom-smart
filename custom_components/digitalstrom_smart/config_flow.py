@@ -21,6 +21,7 @@ from .const import (
     CONF_MAIN_POLL_INTERVAL,
     CONF_BINARY_POLL_INTERVAL,
     CONF_EXTRA_VENTILATION_DSUIDS,
+    CONF_DIVERGENT_HALF_RATE,
     DEFAULT_MAIN_POLL_INTERVAL,
     DEFAULT_BINARY_POLL_INTERVAL,
     MIN_POLL_INTERVAL,
@@ -311,6 +312,7 @@ class DigitalStromOptionsFlow(config_entries.OptionsFlow):
             CONF_BINARY_POLL_INTERVAL, DEFAULT_BINARY_POLL_INTERVAL
         )
         current_extra_vent = entry.options.get(CONF_EXTRA_VENTILATION_DSUIDS, "")
+        current_divergent_half = entry.options.get(CONF_DIVERGENT_HALF_RATE, False)
 
         interval_selector = vol.All(
             vol.Coerce(int),
@@ -339,6 +341,10 @@ class DigitalStromOptionsFlow(config_entries.OptionsFlow):
                     CONF_EXTRA_VENTILATION_DSUIDS,
                     default=current_extra_vent,
                 ): str,
+                vol.Optional(
+                    CONF_DIVERGENT_HALF_RATE,
+                    default=current_divergent_half,
+                ): bool,
             }
         )
 

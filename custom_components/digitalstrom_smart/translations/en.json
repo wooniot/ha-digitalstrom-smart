@@ -54,14 +54,16 @@
           "pro_license_key": "Pro license key",
           "main_poll_interval": "Poll interval (seconds)",
           "binary_poll_interval": "Contact/motion fallback poll interval (seconds)",
-          "extra_ventilation_dsuids": "Extra ventilation UMR200 dsuids (advanced)"
+          "extra_ventilation_dsuids": "Extra ventilation UMR200 dsuids (advanced)",
+          "divergent_half_rate": "Halve safety-net rate for persistently-divergent actuators"
         },
         "data_description": {
           "invert_cover_position": "Enable this if your blinds/screens move in the wrong direction (open/close reversed)",
           "pro_license_key": "Unlock climate control, energy dashboard, outdoor sensors, device identification and more. Get your key at wooniot.nl/pro",
           "main_poll_interval": "How often sensor, energy and status data is read from the dSS. Higher = less load on the dSS server. Default 30s (range 15–300).",
           "binary_poll_interval": "Fallback reconcile poll for contacts/motion/door sensors. These already update in real time via events; this poll is only a safety net for missed events. Higher = less load. Default 30s (range 15–300).",
-          "extra_ventilation_dsuids": "Comma-separated dsuids of UMR200 outputs that drive a ventilation unit but are configured OUTSIDE the dS Ventilation colour group (e.g. as Joker/black). Leave empty unless a ventilation output is missing its Ventilation status/level entities because of its dS colour group. Advanced — only touch if you know the dsuid."
+          "extra_ventilation_dsuids": "Comma-separated dsuids of UMR200 outputs that drive a ventilation unit but are configured OUTSIDE the dS Ventilation colour group (e.g. as Joker/black). Leave empty unless a ventilation output is missing its Ventilation status/level entities because of its dS colour group. Advanced — only touch if you know the dsuid.",
+          "divergent_half_rate": "Check the persistently-divergent Joker actuators (isOn=true while the relay output is physically 0, a structural dSS-API quirk) once every two safety-net cycles instead of every cycle. Halves their average bus load; a switch missed via events is corrected after up to ~2x the safety-net interval instead of 1x. Leave off for unchanged behaviour."
         }
       }
     }

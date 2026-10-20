@@ -521,6 +521,16 @@ CONF_BINARY_POLL_INTERVAL = "binary_poll_interval"
 # René (28 aug 2026): his "Overloop Ventilatie" UMR200 outputs are Joker-config.
 CONF_EXTRA_VENTILATION_DSUIDS = "extra_ventilation_dsuids"
 
+# Opt-in: controleer de BLIJVEND-divergente Joker-actoren (getState.isOn=true terwijl
+# de relais-output fysiek 0 is -- een structureel fenomeen van de dSS-API) nog maar
+# eens per TWEE vangnet-cycli i.p.v. elke cyclus. Deze set wordt al via events live
+# gehouden; de getOutputValue-read per actor (~2,6 s) is puur vangnet. Halveert de
+# gemiddelde vangnet-last van die set, met als prijs dat een via events GEMISTE
+# omschakeling na maximaal ~2x het vangnet-interval wordt hersteld i.p.v. 1x (bij de
+# default 600s dus ~20 min i.p.v. ~10). Uit by default: elke cyclus lezen, ongewijzigd
+# gedrag. Voorstel Rene, 20 okt 2026.
+CONF_DIVERGENT_HALF_RATE = "divergent_half_rate"
+
 # --- Platforms ---
 # Free platforms (always loaded)
 PLATFORMS_FREE = ["light", "cover", "sensor", "scene", "switch", "binary_sensor", "button", "event"]

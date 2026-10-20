@@ -311,6 +311,15 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
         # strict GROUP_VENTILATION gate stays in force.
         self.extra_ventilation_dsuids: set[str] = set()
 
+        # Opt-in (CONF_DIVERGENT_HALF_RATE): lees de BLIJVEND-divergente Joker-actoren
+        # (dsuid in _joker_divergence_warned) nog maar eens per twee runtime-vangnet-
+        # cycli. Uit by default: elke cyclus lezen (ongewijzigd gedrag). Zie const.
+        self.divergent_half_rate: bool = False
+        # Teller van de runtime-vangnetronden (confirm_startup=False) van de joker-
+        # actor-confirm. Alleen gebruikt om bij divergent_half_rate de oneven ronden
+        # over te slaan voor de reeds-divergente set.
+        self._joker_confirm_run: int = 0
+
     def button_devices(self) -> dict[str, dict]:
         """Devices that emit dSS ``buttonClick`` events (rockers / pushbuttons).
 
@@ -712,6 +721,16 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
         # actor. Omdat _joker_divergence_warned bij elke start leeg is, gaf dat anders
         # bij iedere herstart opnieuw een regen van WARNING-regels (log onleesbaar).
         newly_divergent: list[str] = []
+        # Opt-in half-rate (CONF_DIVERGENT_HALF_RATE, René 20 okt 2026). Tel de runtime-
+        # vangnetronden en bepaal of DEZE ronde een overslag-ronde is voor de reeds-
+        # divergente set. De seed-/startup-ronde (confirm_startup) telt niet mee en slaat
+        # nooit over. Uit by default: skip_divergent_cycle blijft False, alles ongewijzigd.
+        skip_divergent_cycle = False
+        if not confirm_startup:
+            self._joker_confirm_run += 1
+            skip_divergent_cycle = (
+                self.divergent_half_rate and self._joker_confirm_run % 2 == 1
+            )
         for zone_id in list(self.zones):
             for dev in self.get_joker_actuators_in_zone(zone_id):
                 dsuid = dev.get("dsuid")
@@ -762,11 +781,33 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
                         and old_on == is_on
                         and dsuid not in self._joker_divergence_warned
                     )
+                    # Half-rate voor de BLIJVEND-divergente set (opt-in, René 20 okt 2026).
+                    # Een actor die al divergent is (in _joker_divergence_warned) staat op
+                    # old_on=False (gecorrigeerd naar UIT) terwijl isOn=true blijft liegen.
+                    # Die set wordt via events live gehouden; de getOutputValue-read is puur
+                    # vangnet. Op een overslag-ronde slaan we de read over en HOUDEN we de
+                    # gecorrigeerde UIT-stand (resolved=old_on=False) vast -- de actor klapt
+                    # dus niet terug naar AAN. Een via events gemiste omschakeling wordt dan
+                    # pas de volgende (niet-overslaande) ronde opgepikt (max ~2x interval).
+                    skip_divergent_read = (
+                        skip_divergent_cycle
+                        and not confirm_startup
+                        and old_on is False
+                        and is_on
+                        and dsuid in self._joker_divergence_warned
+                    )
                     if skip_runtime_read:
                         _LOGGER.debug(
                             "[DS-DEBUG] Joker-actor %s (%s): isOn ongewijzigd true en niet "
                             "divergent -> runtime getOutputValue overgeslagen (voorstel 3)",
                             dsuid, dev.get("name", ""),
+                        )
+                    elif skip_divergent_read:
+                        resolved = old_on
+                        _LOGGER.debug(
+                            "[DS-DEBUG] Joker-actor %s (%s): blijvend divergent, half-rate "
+                            "overslag-ronde -> getOutputValue overgeslagen, stand blijft %s",
+                            dsuid, dev.get("name", ""), old_on,
                         )
                     elif not confirm_startup and old_on is not None and is_on:
                         run_out_val = -1
@@ -820,6 +861,21 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
                                     "(isOn=true, outputValue=0) -> blijft gecorrigeerd naar UIT",
                                     dsuid, dev.get("name", ""),
                                 )
+                        elif run_out_val < 0:
+                            # Mislezing (getOutputValue faalde, -1). GEEN conclusie: niet
+                            # corrigeren én de divergentie-episode NIET als voorbij
+                            # beschouwen. Houd de laatst vastgestelde stand (resolved=old_on)
+                            # en laat een eventuele divergentie-vlag staan. Zo zet een
+                            # transiente busfout een blijvend-divergente actor niet ten
+                            # onrechte op AAN en wist hij de vlag niet. Spiegelt Henks
+                            # intentie ("alleen een expliciete 0 corrigeert; een mislezing
+                            # laat isOn ongemoeid"); de bus-fout is al geteld (René, 20 okt).
+                            resolved = old_on
+                            _LOGGER.debug(
+                                "[DS-DEBUG] Joker-actor %s (%s) runtime getOutputValue mislezen "
+                                "(-1) -> stand gehouden op %s, divergentie-status ongemoeid",
+                                dsuid, dev.get("name", ""), old_on,
+                            )
                         else:
                             # Actor klopt weer (out>0): episode voorbij, WARNING her-bewapenen.
                             self._joker_divergence_warned.discard(dsuid)

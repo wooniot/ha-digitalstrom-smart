@@ -30,6 +30,7 @@ from .const import (
     CONF_MAIN_POLL_INTERVAL,
     CONF_BINARY_POLL_INTERVAL,
     CONF_EXTRA_VENTILATION_DSUIDS,
+    CONF_DIVERGENT_HALF_RATE,
     DEFAULT_MAIN_POLL_INTERVAL,
     DEFAULT_BINARY_POLL_INTERVAL,
     MIN_POLL_INTERVAL,
@@ -183,6 +184,18 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 _LOGGER.info(
                     "Extra ventilation UMR200 dsuids (opt-in, outside Ventilation group): %s",
                     ", ".join(sorted(coordinator.extra_ventilation_dsuids)),
+                )
+
+            # Opt-in: controleer de blijvend-divergente Joker-actoren eens per twee
+            # vangnet-cycli i.p.v. elke cyclus (CONF_DIVERGENT_HALF_RATE). Uit by
+            # default; events houden de set tussendoor live (René, 20 okt 2026).
+            coordinator.divergent_half_rate = bool(
+                entry.options.get(CONF_DIVERGENT_HALF_RATE, False)
+            )
+            if coordinator.divergent_half_rate:
+                _LOGGER.info(
+                    "Half-rate vangnet voor blijvend-divergente Joker-actoren AAN "
+                    "(opt-in): set wordt eens per twee vangnet-cycli gelezen"
                 )
 
             # Check Pro license. Store the key + entry id on the coordinator so it can

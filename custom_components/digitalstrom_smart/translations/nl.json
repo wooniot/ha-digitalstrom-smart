@@ -54,14 +54,16 @@
           "pro_license_key": "Pro licentiesleutel",
           "main_poll_interval": "Poll-interval (seconden)",
           "binary_poll_interval": "Vangnet-poll contact/beweging (seconden)",
-          "extra_ventilation_dsuids": "Extra ventilatie-UMR200 dsuids (geavanceerd)"
+          "extra_ventilation_dsuids": "Extra ventilatie-UMR200 dsuids (geavanceerd)",
+          "divergent_half_rate": "Vangnet voor blijvend-divergente actoren halveren"
         },
         "data_description": {
           "invert_cover_position": "Schakel dit in als je zonwering/rolluiken de verkeerde kant op bewegen (open/dicht omgedraaid)",
           "pro_license_key": "Ontgrendel klimaatregeling, energiedashboard, buitensensoren, apparaat-identificatie en meer. Haal je sleutel op wooniot.nl/pro",
           "main_poll_interval": "Hoe vaak sensor-, energie- en statusdata van de dSS wordt gelezen. Hoger = minder belasting op de dSS-server. Standaard 30s (bereik 15–300).",
           "binary_poll_interval": "Vangnet-poll voor contact-/bewegings-/deursensoren. Deze werken al realtime bij via events; deze poll is alleen een vangnet voor gemiste events. Hoger = minder belasting. Standaard 30s (bereik 15–300).",
-          "extra_ventilation_dsuids": "Komma-gescheiden dsuids van UMR200-uitgangen die een ventilatie-unit aansturen maar BUITEN de dS-kleurgroep Ventilatie zijn geconfigureerd (bv. als Joker/zwart). Laat leeg tenzij een ventilatie-uitgang zijn Ventilatiestatus/-niveau-entiteiten mist vanwege zijn dS-kleurgroep. Geavanceerd — alleen invullen als je de dsuid kent."
+          "extra_ventilation_dsuids": "Komma-gescheiden dsuids van UMR200-uitgangen die een ventilatie-unit aansturen maar BUITEN de dS-kleurgroep Ventilatie zijn geconfigureerd (bv. als Joker/zwart). Laat leeg tenzij een ventilatie-uitgang zijn Ventilatiestatus/-niveau-entiteiten mist vanwege zijn dS-kleurgroep. Geavanceerd — alleen invullen als je de dsuid kent.",
+          "divergent_half_rate": "Controleer de blijvend-divergente Joker-actoren (isOn=true terwijl de relais-output fysiek 0 is, een structureel fenomeen van de dSS-API) eens per twee vangnet-cycli i.p.v. elke cyclus. Halveert hun gemiddelde buslast; een via events gemiste omschakeling wordt na maximaal ~2x het vangnet-interval hersteld i.p.v. 1x. Laat uit voor ongewijzigd gedrag."
         }
       }
     }

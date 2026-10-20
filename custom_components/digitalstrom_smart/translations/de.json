@@ -54,14 +54,16 @@
           "pro_license_key": "Pro-Lizenzschlüssel",
           "main_poll_interval": "Abfrageintervall (Sekunden)",
           "binary_poll_interval": "Fallback-Abfrage Kontakt/Bewegung (Sekunden)",
-          "extra_ventilation_dsuids": "Zusätzliche Lüftungs-UMR200-dsuids (erweitert)"
+          "extra_ventilation_dsuids": "Zusätzliche Lüftungs-UMR200-dsuids (erweitert)",
+          "divergent_half_rate": "Fangnetz-Rate fuer dauerhaft divergente Aktoren halbieren"
         },
         "data_description": {
           "invert_cover_position": "Aktivieren Sie dies, wenn sich Ihre Jalousien/Rollläden in die falsche Richtung bewegen (Öffnen/Schließen vertauscht)",
           "pro_license_key": "Schalten Sie Klimasteuerung, Energie-Dashboard, Außensensoren, Geräteidentifikation und mehr frei. Holen Sie sich Ihren Schlüssel auf wooniot.nl/pro",
           "main_poll_interval": "Wie oft Sensor-, Energie- und Statusdaten vom dSS gelesen werden. Höher = weniger Last auf dem dSS-Server. Standard 30s (Bereich 15–300).",
           "binary_poll_interval": "Fallback-Abfrage für Kontakt-/Bewegungs-/Türsensoren. Diese werden bereits in Echtzeit über Events aktualisiert; diese Abfrage ist nur ein Sicherheitsnetz für verpasste Events. Höher = weniger Last. Standard 30s (Bereich 15–300).",
-          "extra_ventilation_dsuids": "Kommagetrennte dsuids von UMR200-Ausgängen, die eine Lüftungseinheit ansteuern, aber AUSSERHALB der dS-Farbgruppe Ventilation konfiguriert sind (z. B. als Joker/schwarz). Leer lassen, sofern nicht einem Lüftungsausgang wegen seiner dS-Farbgruppe die Lüftungsstatus-/-stufen-Entitäten fehlen. Erweitert — nur bei bekannter dsuid ändern."
+          "extra_ventilation_dsuids": "Kommagetrennte dsuids von UMR200-Ausgängen, die eine Lüftungseinheit ansteuern, aber AUSSERHALB der dS-Farbgruppe Ventilation konfiguriert sind (z. B. als Joker/schwarz). Leer lassen, sofern nicht einem Lüftungsausgang wegen seiner dS-Farbgruppe die Lüftungsstatus-/-stufen-Entitäten fehlen. Erweitert — nur bei bekannter dsuid ändern.",
+          "divergent_half_rate": "Pruefe die dauerhaft divergenten Joker-Aktoren (isOn=true, waehrend der Relaisausgang physisch 0 ist, ein strukturelles Phaenomen der dSS-API) nur noch bei jedem zweiten Fangnetz-Zyklus statt bei jedem. Halbiert ihre durchschnittliche Buslast; eine ueber Events verpasste Umschaltung wird nach maximal ~2x dem Fangnetz-Intervall korrigiert statt 1x. Aus lassen fuer unveraendertes Verhalten."
         }
       }
     }
