@@ -2649,6 +2649,19 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
     # Polling (DataUpdateCoordinator)
     # =====================================================================
 
+    async def _timed(self, stage: str, coro):
+        """Diagnostisch (René, 20 okt 2026, voorstel 1): tim één cyclus-stap en
+        log de duur op DEBUG. De samenvattende INFO-regel toont de totale cyclus
+        en het vangnet-segment; deze per-stap-regels maken binnen die cyclus
+        zichtbaar WELKE stap (jokers / ventilatie / device_sensors / circuits /
+        klimaat / dss_states / ...) de tijd opslokt, zodat de +25 s niet langer
+        geschat hoeft te worden. Puur meten — geen gedragsverandering."""
+        t0 = _time.monotonic()
+        try:
+            return await coro
+        finally:
+            _LOGGER.debug("Cyclus-stap %s: %.1f s", stage, _time.monotonic() - t0)
+
     async def _async_update_data(self) -> dict:
         """Periodic poll for consumption + temperature + sensors."""
         try:
@@ -2668,9 +2681,13 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
             self._zone_sensors_fresh = False
             sensor_data = None
 
-            self._consumption = await self.api.get_consumption()
+            self._consumption = await self._timed(
+                "consumption", self.api.get_consumption()
+            )
 
-            temp_data = await self.api.get_temperature_values()
+            temp_data = await self._timed(
+                "temperatures", self.api.get_temperature_values()
+            )
             for zone_data in temp_data:
                 zone_id = zone_data.get("id")
                 if zone_id is not None and zone_id > 0:
@@ -2680,7 +2697,7 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
                     self._temperatures[zone_id] = existing
 
             # Per-circuit power (FREE)
-            await self.fetch_circuit_data()
+            await self._timed("circuits", self.fetch_circuit_data())
 
             # PRO: fetch the apartment-wide getSensorValues BEFORE mapping device
             # sensors, so fetch_device_sensors maps THIS cycle's fresh data exactly
@@ -2688,16 +2705,16 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
             # The response is reused below for the outdoor/sun read — still one
             # apartment-wide call per cycle (René, 26 aug 2026).
             if self.pro_enabled:
-                sensor_data = await self.fetch_sensor_data()
+                sensor_data = await self._timed("sensor_data", self.fetch_sensor_data())
 
             # Device sensors: Ulux, thermostats, etc. (FREE per-zone loop / PRO map)
-            await self.fetch_device_sensors()
+            await self._timed("device_sensors", self.fetch_device_sensors())
 
             # Binary input states: handled by separate fast poll loop (_binary_poll_loop)
 
             # Apartment presence mode: poll every cycle (free + pro).
             # Events don't fire reliably on restart or external scene changes.
-            await self.fetch_apartment_state()
+            await self._timed("apartment_state", self.fetch_apartment_state())
 
             # Joker-ACTOR output-stand LIVE herbevestigen (getState.isOn). callScene-
             # events houden de switch tussendoor live; deze refresh is het vangnet
@@ -2712,14 +2729,14 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
             ):
                 self._last_joker_confirm = poll_now
                 _vangnet_t0 = _time.monotonic()
-                await self.fetch_joker_actuator_states()
+                await self._timed("jokers", self.fetch_joker_actuator_states())
                 # SW-UMR200 ventilation output levels ride the same vangnet cadence
                 # (2 getOutputValue calls per UMR200 per minute — negligible load).
-                await self.fetch_ventilation_outputs()
+                await self._timed("ventilatie", self.fetch_ventilation_outputs())
                 _vangnet_secs = _time.monotonic() - _vangnet_t0
 
             # dSS /usr/states backup-poll (events keep these live in between).
-            await self.fetch_dss_states()
+            await self._timed("dss_states", self.fetch_dss_states())
 
             # Custom (Configurator) states: fetched once at startup in
             # __init__.py (best-effort). If that attempt failed or raced the
@@ -2749,8 +2766,12 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
                 climate_now = _time.time()
                 if climate_now - self._last_climate_poll >= self._climate_confirm_interval:
                     self._last_climate_poll = climate_now
-                    await self.fetch_climate_data(skip_temp_prefetch=True)
-                await self.fetch_outdoor_weather(data=sensor_data)
+                    await self._timed(
+                        "klimaat", self.fetch_climate_data(skip_temp_prefetch=True)
+                    )
+                await self._timed(
+                    "outdoor", self.fetch_outdoor_weather(data=sensor_data)
+                )
 
         except DigitalStromAuthError:
             _LOGGER.warning("Auth error during poll, reconnecting...")
