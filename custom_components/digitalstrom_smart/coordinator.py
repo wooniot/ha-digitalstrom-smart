@@ -244,6 +244,10 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
             f"{DOMAIN}_umr200_bad_offsets_{dss_id or 'default'}",
         )
         self._bad_offsets_loaded = False
+        # René (20 okt 2026): teller voor mislukte getOutputValue-reads over de
+        # ds485-bus binnen één poll-cyclus (HTTP 500 / socket). Gereset aan het
+        # begin van elke _async_update_data; de cyclus-duurregel noemt het aantal.
+        self._bus_errors_this_cycle = 0
 
         # Parse structure into zones and devices
         self.zones: dict[int, dict] = {}
@@ -741,6 +745,7 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
                         try:
                             run_out_val = await self.api.get_device_output_value(dsuid)
                         except Exception as err:
+                            self._bus_errors_this_cycle += 1
                             _LOGGER.debug(
                                 "Joker-actor runtime getOutputValue faalde %s: %s", dsuid, err
                             )
@@ -2181,6 +2186,7 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
                 try:
                     raw = await self.api.get_device_output_value(dsuid, offset)
                 except Exception as err:
+                    self._bus_errors_this_cycle += 1
                     _LOGGER.debug(
                         "UMR200 %s (%s) getOutputValue offset=%d faalde: %s",
                         dsuid[:12], dev.get("name", ""), offset, err,
@@ -2646,6 +2652,18 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
     async def _async_update_data(self) -> dict:
         """Periodic poll for consumption + temperature + sensors."""
         try:
+            # René (20 okt 2026): meet de volledige cyclus hard, zodat de duur niet
+            # uit externe log-timestamps geschat hoeft te worden. De "volledige"
+            # cyclus die René op ~85-95 s meet, is de vangnet-cyclus: de lichte
+            # tussenpolls duren ~0,2 s, maar de getState/getOutputValue-reads over
+            # de seriële ds485-bus (joker + ventilatie) domineren. Daarom timen we
+            # het vangnet-segment apart en tellen we de bus-fouten (HTTP 500 /
+            # socket) van deze cyclus, zodat te zien is of die met de duur
+            # correleren. Puur diagnostisch — geen gedragsverandering.
+            _cycle_t0 = _time.monotonic()
+            self._bus_errors_this_cycle = 0
+            _vangnet_secs = None
+
             # New cycle: no fresh apartment sensor cache yet.
             self._zone_sensors_fresh = False
             sensor_data = None
@@ -2693,10 +2711,12 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
                 and poll_now - self._last_joker_confirm >= self._joker_confirm_interval
             ):
                 self._last_joker_confirm = poll_now
+                _vangnet_t0 = _time.monotonic()
                 await self.fetch_joker_actuator_states()
                 # SW-UMR200 ventilation output levels ride the same vangnet cadence
                 # (2 getOutputValue calls per UMR200 per minute — negligible load).
                 await self.fetch_ventilation_outputs()
+                _vangnet_secs = _time.monotonic() - _vangnet_t0
 
             # dSS /usr/states backup-poll (events keep these live in between).
             await self.fetch_dss_states()
@@ -2763,6 +2783,24 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
         if self.pro_license_key and (now - self._license_last_check > 21600):
             self._license_last_check = now
             self.hass.async_create_task(self._recheck_license())
+
+        # René (20 okt 2026): één samenvattende duur-regel per cyclus. Zo is de
+        # ~85-95 s hard terug te zien en toe te wijzen: liep het vangnet-segment
+        # (de ds485-bus-reads) deze cyclus, dan staat zijn duur erbij — meestal
+        # is dat vrijwel de hele cyclustijd. Een lichte tussencyclus zonder
+        # vangnet hoort rond ~0,2 s te blijven. bus-fouten = aantal HTTP 500 /
+        # socket-fouten op getOutputValue deze cyclus (transient, op DEBUG).
+        _cycle_secs = _time.monotonic() - _cycle_t0
+        if _vangnet_secs is not None:
+            _LOGGER.info(
+                "Poll-cyclus klaar in %.1f s (vangnet ds485-reads %.1f s, "
+                "%d bus-fout(en) deze cyclus)",
+                _cycle_secs, _vangnet_secs, self._bus_errors_this_cycle,
+            )
+        else:
+            _LOGGER.debug(
+                "Poll-cyclus (licht, zonder vangnet) klaar in %.1f s", _cycle_secs
+            )
 
         return {
             "consumption": self._consumption,
