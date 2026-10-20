@@ -40,6 +40,7 @@ from .const import (
     GROUP_TEMP_CONTROL,
     VENTILATION_OUTPUT_OFFSETS,
     VENTILATION_ON_THRESHOLD_PCT,
+    MAX_JOKER_SKIP_CYCLES,
     UMR200_HW_MARKER,
     UMR200_OFFSET_FAIL_LIMIT,
     DS485_INVALID_PARAMETER_MARKER,
@@ -319,6 +320,11 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
         # actor-confirm. Alleen gebruikt om bij divergent_half_rate de oneven ronden
         # over te slaan voor de reeds-divergente set.
         self._joker_confirm_run: int = 0
+        # Per-actor teller van opeenvolgende skip_runtime_read-overslagen (voorstel 3).
+        # Bij MAX_JOKER_SKIP_CYCLES forceren we een getOutputValue-vangnet-read, zodat
+        # een fysiek-uitgeschakelde actor die isOn=true blijft melden niet onbeperkt op
+        # AAN blijft staan. Een callScene-event op de zone reset de teller (René, 20 okt).
+        self._joker_skip_count: dict[str, int] = {}
 
     def button_devices(self) -> dict[str, dict]:
         """Devices that emit dSS ``buttonClick`` events (rockers / pushbuttons).
@@ -796,11 +802,32 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
                         and is_on
                         and dsuid in self._joker_divergence_warned
                     )
+                    # Vangnet-cap (René, 20 okt 2026). skip_runtime_read houdt resolved=is_on
+                    # (AAN) vast zonder getOutputValue te lezen. Omdat de dSS-API bij een
+                    # fysiek uitgeschakelde actor isOn=true kan blijven melden, zou zo'n actor
+                    # zonder isOn-wijziging onbeperkt op AAN blijven staan. Forceer daarom een
+                    # echte read na MAX_JOKER_SKIP_CYCLES opeenvolgende overslagen; de teller
+                    # wordt ook door een callScene-event (zie _process_event) teruggezet.
+                    if skip_runtime_read:
+                        skips = self._joker_skip_count.get(dsuid, 0)
+                        if skips >= MAX_JOKER_SKIP_CYCLES:
+                            # Cap bereikt: deze cyclus tóch lezen (val door naar de read-tak).
+                            skip_runtime_read = False
+                            self._joker_skip_count[dsuid] = 0
+                            _LOGGER.debug(
+                                "[DS-DEBUG] Joker-actor %s (%s): skip-cap (%d) bereikt -> "
+                                "getOutputValue-vangnet-read geforceerd",
+                                dsuid, dev.get("name", ""), MAX_JOKER_SKIP_CYCLES,
+                            )
+                        else:
+                            self._joker_skip_count[dsuid] = skips + 1
                     if skip_runtime_read:
                         _LOGGER.debug(
                             "[DS-DEBUG] Joker-actor %s (%s): isOn ongewijzigd true en niet "
-                            "divergent -> runtime getOutputValue overgeslagen (voorstel 3)",
+                            "divergent -> runtime getOutputValue overgeslagen (voorstel 3, "
+                            "overslag %d/%d)",
                             dsuid, dev.get("name", ""),
+                            self._joker_skip_count.get(dsuid, 0), MAX_JOKER_SKIP_CYCLES,
                         )
                     elif skip_divergent_read:
                         resolved = old_on
@@ -810,6 +837,8 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
                             dsuid, dev.get("name", ""), old_on,
                         )
                     elif not confirm_startup and old_on is not None and is_on:
+                        # Een echte getOutputValue-read: de overslagreeks is onderbroken.
+                        self._joker_skip_count[dsuid] = 0
                         run_out_val = -1
                         try:
                             run_out_val = await self.api.get_device_output_value(dsuid)
@@ -2579,6 +2608,10 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
                 if group == GROUP_JOKER:
                     for dev in self.get_joker_actuators_in_zone(zone_id):
                         self.set_device_on_state(dev["dsuid"], is_on)
+                        # Waarborg 2 (René, 20 okt 2026): een scene wijzigde de fysieke
+                        # stand, dus forceer dat de volgende vangnet-cyclus deze actor
+                        # écht leest i.p.v. op een lopende overslagreeks te vertrouwen.
+                        self._joker_skip_count[dev["dsuid"]] = MAX_JOKER_SKIP_CYCLES
 
                 _LOGGER.debug(
                     "Event %s: zone=%d group=%d scene=%d",

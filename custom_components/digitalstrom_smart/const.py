@@ -531,6 +531,15 @@ CONF_EXTRA_VENTILATION_DSUIDS = "extra_ventilation_dsuids"
 # gedrag. Voorstel Rene, 20 okt 2026.
 CONF_DIVERGENT_HALF_RATE = "divergent_half_rate"
 
+# Vangnet-cap voor een overgeslagen 'akkoord'-actor (voorstel 3 / skip_runtime_read).
+# Een Joker-actor die isOn=true meldt, ongewijzigd is en NIET divergent, slaan we de
+# getOutputValue-read voor over en houden resolved=is_on (AAN). Omdat de dSS-API bij een
+# fysiek uitgeschakelde actor isOn=true kan blijven melden, zou zo'n actor zonder isOn-
+# wijziging onbeperkt op AAN blijven staan. Forceer daarom een echte read na maximaal
+# dit aantal opeenvolgende overslagen (bij de default 600s-vangnet ~30 min). Voorstel
+# René, 20 okt 2026. Een callScene-event op de zone reset de teller eveneens.
+MAX_JOKER_SKIP_CYCLES = 3
+
 # --- Platforms ---
 # Free platforms (always loaded)
 PLATFORMS_FREE = ["light", "cover", "sensor", "scene", "switch", "binary_sensor", "button", "event"]
