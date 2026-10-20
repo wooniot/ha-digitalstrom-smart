@@ -193,6 +193,11 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
         # SW-UMR200 ventilation outputs: {dsuid: {offset: {"raw": 0..255, "pct": 0..100}}}
         # Filled from getOutputValue per output offset — the direct relay read.
         self._ventilation_outputs: dict[str, dict[int, dict]] = {}
+        # Ventilatie-UMR200's waarvan de jokerstap deze vangnet-cyclus de offset-0
+        # relais-output al LAS (getOutputValue). fetch_ventilation_outputs slaat
+        # offset 0 dan over om de dubbele read te vermijden (René, 20 okt 2026).
+        # Wordt aan het begin van elk vangnet-blok geleegd.
+        self._vent_offset0_fresh: set[str] = set()
 
         # Metering data
         self._circuit_power: dict[str, int] = {}  # dsuid -> watts
@@ -740,7 +745,30 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
                     # terugkerende HA-errorbanner (precies wat de edge-trigger wilde vermijden).
                     # We her-bewapenen daarom UITSLUITEND na een bevestigd fysiek-AAN
                     # (getOutputValue>0, zie onder): pas dan is de episode echt voorbij.
-                    if not confirm_startup and old_on is not None and is_on:
+                    # Voorstel 3 — verfijnd (René, 20 okt 2026). De runtime-read
+                    # (getOutputValue ~2,6 s/call) corrigeert een divergente actor
+                    # elke cyclus. Maar een actor die 'akkoord' is (output>0, dus NIET
+                    # in de divergentie-set) en waarvan isOn ongewijzigd true blijft,
+                    # hoeft niet opnieuw gelezen te worden: er valt niets te corrigeren
+                    # en resolved blijft is_on. Sla de read dan over. Een blijvend-
+                    # divergente actor (wél in _joker_divergence_warned) OF een actor
+                    # waarvan isOn net veranderde, lezen we gewoon door — zo klapt een
+                    # gecorrigeerde actor niet terug naar AAN. Dit raakt precies de
+                    # ~7 'akkoord'-reads/cyclus (~20 s) die René mat in beta6.
+                    skip_runtime_read = (
+                        not confirm_startup
+                        and old_on is not None
+                        and is_on
+                        and old_on == is_on
+                        and dsuid not in self._joker_divergence_warned
+                    )
+                    if skip_runtime_read:
+                        _LOGGER.debug(
+                            "[DS-DEBUG] Joker-actor %s (%s): isOn ongewijzigd true en niet "
+                            "divergent -> runtime getOutputValue overgeslagen (voorstel 3)",
+                            dsuid, dev.get("name", ""),
+                        )
+                    elif not confirm_startup and old_on is not None and is_on:
                         run_out_val = -1
                         try:
                             run_out_val = await self.api.get_device_output_value(dsuid)
@@ -749,6 +777,17 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
                             _LOGGER.debug(
                                 "Joker-actor runtime getOutputValue faalde %s: %s", dsuid, err
                             )
+                        # Dubbele ventilatie-read wegnemen (René, 20 okt 2026): is dit
+                        # een UMR200-ventilatie-uitgang en lazen we de offset-0 relais-
+                        # output zojuist succesvol, hergebruik die dan in de ventilatie-
+                        # stap i.p.v. offset 0 nog eens te lezen (~14,5 s/cyclus).
+                        if dsuid in vent_dsuids and run_out_val >= 0:
+                            pct = round(max(0, min(255, run_out_val)) / 255 * 100)
+                            self._ventilation_outputs.setdefault(dsuid, {})[0] = {
+                                "raw": run_out_val,
+                                "pct": pct,
+                            }
+                            self._vent_offset0_fresh.add(dsuid)
                         vent_rest = dsuid in vent_dsuids and _vent_output_is_off(run_out_val)
                         if run_out_val == 0 or vent_rest:
                             resolved = False
@@ -2180,6 +2219,16 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
                 continue
             per_offset: dict[int, dict] = {}
             for offset in VENTILATION_OUTPUT_OFFSETS:
+                # Dubbele read wegnemen (René, 20 okt 2026): las de jokerstap deze
+                # vangnet-cyclus de offset-0 relais-output al, hergebruik die i.p.v.
+                # offset 0 nog eens te lezen. Las de jokerstap deze unit NIET
+                # (isOn=false, read faalde, of read overgeslagen), dan is dsuid niet
+                # in _vent_offset0_fresh en lezen we hem hier gewoon zelf — veilig.
+                if offset == 0 and dsuid in self._vent_offset0_fresh:
+                    cached = self._ventilation_outputs.get(dsuid, {}).get(0)
+                    if cached is not None:
+                        per_offset[0] = cached
+                    continue
                 seed_key = f"{dsuid}:{offset}"
                 if seed_key in self._umr200_bad_offsets:
                     continue
@@ -2728,6 +2777,9 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
                 and poll_now - self._last_joker_confirm >= self._joker_confirm_interval
             ):
                 self._last_joker_confirm = poll_now
+                # Nieuw vangnet-blok: de jokerstap vult _vent_offset0_fresh opnieuw,
+                # dus eerst legen (René, 20 okt 2026).
+                self._vent_offset0_fresh.clear()
                 _vangnet_t0 = _time.monotonic()
                 await self._timed("jokers", self.fetch_joker_actuator_states())
                 # SW-UMR200 ventilation output levels ride the same vangnet cadence
