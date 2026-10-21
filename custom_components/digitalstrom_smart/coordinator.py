@@ -125,6 +125,10 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
         # User-tunable dSS request rate (Options flow). The binary fallback poll
         # is the dominant steady-state load; events keep the fast path instant.
         self._binary_poll_interval = binary_poll_interval
+        # Bewaar de hoofdpoll-interval apart zodat de vangnet-drempel er een halve
+        # poll-marge op kan nemen (René, 21 okt 2026 — zie het vangnet-blok in
+        # _async_update_data) i.p.v. af te hangen van self.update_interval.
+        self._main_poll_interval = main_poll_interval
         self._event_task: asyncio.Task | None = None
         self._binary_poll_task: asyncio.Task | None = None
         self._reconnect_delay = RECONNECT_INITIAL
@@ -320,6 +324,11 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
         # actor-confirm. Alleen gebruikt om bij divergent_half_rate de oneven ronden
         # over te slaan voor de reeds-divergente set.
         self._joker_confirm_run: int = 0
+        # Was de HUIDIGE vangnet-ronde een half-rate overslag-ronde? Gezet door
+        # fetch_joker_actuator_states, gelezen door fetch_ventilation_outputs (die
+        # erop volgt in hetzelfde vangnet-blok) zodat de ventilatiestap op een
+        # overslag-ronde dezelfde units kan overslaan als de jokerstap (René, 21 okt 2026).
+        self._skip_divergent_cycle: bool = False
         # Per-actor teller van opeenvolgende skip_runtime_read-overslagen (voorstel 3).
         # Bij MAX_JOKER_SKIP_CYCLES forceren we een getOutputValue-vangnet-read, zodat
         # een fysiek-uitgeschakelde actor die isOn=true blijft melden niet onbeperkt op
@@ -741,6 +750,10 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
             skip_divergent_cycle = (
                 self.divergent_half_rate and self._joker_confirm_run % 2 == 1
             )
+        # Beschikbaar maken voor fetch_ventilation_outputs (volgt in hetzelfde
+        # vangnet-blok): op een overslag-ronde slaat ook de ventilatiestap de
+        # reeds-divergente, op rustniveau staande units over (René, 21 okt 2026).
+        self._skip_divergent_cycle = skip_divergent_cycle
         for zone_id in list(self.zones):
             for dev in self.get_joker_actuators_in_zone(zone_id):
                 dsuid = dev.get("dsuid")
@@ -2339,6 +2352,41 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
                 continue
             per_offset: dict[int, dict] = {}
             for offset in VENTILATION_OUTPUT_OFFSETS:
+                # Half-rate ook voor de ventilatiestap (René, 21 okt 2026). Op een
+                # overslag-ronde slaat de jokerstap de getOutputValue-read van de
+                # BLIJVEND-divergente UMR200-units over, maar de ventilatiestap las ze
+                # daarna tóch (~15 s, bijna de hele korte ronde). Volg hier dezelfde
+                # regel: op een overslag-ronde, voor een unit die al divergent is
+                # (_joker_divergence_warned) EN waarvan de laatst bekende stand op het
+                # rustniveau (<= drempel) staat, hergebruiken we die bekende waarde i.p.v.
+                # opnieuw te lezen. Zo wordt een korte ronde ~1 s i.p.v. ~15 s.
+                #   - UITSLUITEND offset 0: dat is het relaiskanaal dat de jokerstap
+                #     leest en corrigeert, dus alleen dáárop slaat de divergentie. Een
+                #     eventuele offset 1 is een andere fysieke uitgang en wordt gewoon
+                #     gelezen (meestal toch al dood/blacklisted op deze units).
+                #   - NIET als er net een callScene op deze unit viel (_joker_callscene_reset):
+                #     dan forceren we de read zodat een zojuist extern geschakelde
+                #     ventilatie niet achter een overslag-ronde blijft hangen.
+                #   - Alleen bij opt-in half-rate (anders is _skip_divergent_cycle altijd
+                #     False); een unit zonder bekende waarde of boven de rustdrempel lezen
+                #     we gewoon door, zodat een opstartende ventilatie direct wordt opgepikt.
+                _last = self._ventilation_outputs.get(dsuid, {}).get(offset)
+                if (
+                    self._skip_divergent_cycle
+                    and offset == 0
+                    and dsuid in self._joker_divergence_warned
+                    and dsuid not in self._joker_callscene_reset
+                    and _last is not None
+                    and _last.get("pct", 100) <= VENTILATION_ON_THRESHOLD_PCT
+                ):
+                    per_offset[offset] = _last
+                    _LOGGER.debug(
+                        "[DS-DEBUG] Ventilatie-UMR200 %s (%s) offset=%d: blijvend "
+                        "divergent, half-rate overslag-ronde, laatst bekende stand op "
+                        "rustniveau (%d%%) -> getOutputValue overgeslagen, waarde hergebruikt",
+                        dsuid[:12], dev.get("name", ""), offset, _last.get("pct", 0),
+                    )
+                    continue
                 # Dubbele read wegnemen (René, 20 okt 2026): las de jokerstap deze
                 # vangnet-cyclus de offset-0 relais-output al, hergebruik die i.p.v.
                 # offset 0 nog eens te lezen. Las de jokerstap deze unit NIET
@@ -2408,6 +2456,11 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
                     )
             if per_offset:
                 self._ventilation_outputs[dsuid] = per_offset
+        # De overslag-vlag geldt UITSLUITEND voor de ventilatiestap die direct op de
+        # jokerstap volgt in hetzelfde vangnet-blok. Hier consumeren en resetten, zodat
+        # een losse/afgebroken aanroep van fetch_ventilation_outputs nooit per ongeluk
+        # op een blijven-staande True overslaat (OpenAI-review 21 okt 2026, punt 4).
+        self._skip_divergent_cycle = False
 
     async def async_load_bad_offsets(self) -> None:
         """Laad de persistente UMR200 dode-offset-blacklist vóór de eerste poll.
@@ -2899,9 +2952,24 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
             # ~2×N calls/cyclus (getState + getOutputValue per actor), dus draait als
             # vangnet op ~1×/min i.p.v. elke hoofdcyclus (René, 26 aug 2026).
             poll_now = _time.time()
+            # Regelmatiger vangnet-interval (René, 21 okt 2026). De hoofdpoll tikt elke
+            # ~main_poll s en de cyclusduur varieert, dus een strikte ">= interval"-drempel
+            # sloeg soms net ná de tik rond 600 s aan en soms pas een hele lange cyclus
+            # later -> de volledige cyclus wisselde tussen ~9,5 en ~14,5 min. Met een marge
+            # van een halve poll-interval slaat het vangnet aan op de tik die het DICHTST
+            # bij de drempel ligt (afronden i.p.v. altijd naar boven), waardoor het interval
+            # strak rond 600 s blijft en de maximale hersteltijd (met half-rate) van ~30
+            # naar ~20 min zakt. De marge wordt geclampt op een halve confirm-interval,
+            # zodat een groot (gebruiker-instelbaar) main_poll_interval de vangnet-throttle
+            # niet kan uitschakelen -> er blijft minstens ~interval/2 tussen twee runs
+            # (OpenAI-review 21 okt 2026, punt 5).
+            _vangnet_margin = min(
+                self._main_poll_interval / 2, self._joker_confirm_interval / 2
+            )
             if (
                 not self._startup_seed_pending
-                and poll_now - self._last_joker_confirm >= self._joker_confirm_interval
+                and poll_now - self._last_joker_confirm
+                >= self._joker_confirm_interval - _vangnet_margin
             ):
                 self._last_joker_confirm = poll_now
                 # Nieuw vangnet-blok: de jokerstap vult _vent_offset0_fresh opnieuw,
