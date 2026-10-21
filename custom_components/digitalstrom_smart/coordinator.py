@@ -786,12 +786,24 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
                     # waarvan isOn net veranderde, lezen we gewoon door — zo klapt een
                     # gecorrigeerde actor niet terug naar AAN. Dit raakt precies de
                     # ~7 'akkoord'-reads/cyclus (~20 s) die René mat in beta6.
+                    #
+                    # UITZONDERING — UMR200-ventilatie nooit overslaan (René, 21 okt
+                    # 2026). Een ventilatiewijziging ZONDER group-10/64-event (bv. de
+                    # woningventilatie op de Overloop die geen event afvuurt) valt op
+                    # het vangnet terug. Met de skip-cap (MAX_JOKER_SKIP_CYCLES=3) kon
+                    # zo'n unit in het slechtste geval 3 overgeslagen cyclussen + 1
+                    # wachten voor de getOutputValue-correctie -> >30 min stale terwijl
+                    # de stand direct zichtbaar is voor de gebruiker. Een UMR200 is maar
+                    # een paar goedkope reads; door 'm nooit over te slaan klopt de
+                    # ventilatie altijd binnen één vangnet-cyclus (~10 min). Kost hooguit
+                    # ~7 s/cyclus extra. (Het event-pad blijft de snelle weg, seconden.)
                     skip_runtime_read = (
                         not confirm_startup
                         and old_on is not None
                         and is_on
                         and old_on == is_on
                         and dsuid not in self._joker_divergence_warned
+                        and dsuid not in vent_dsuids
                     )
                     # Half-rate voor de BLIJVEND-divergente set (opt-in, René 20 okt 2026).
                     # Een actor die al divergent is (in _joker_divergence_warned) staat op
@@ -801,12 +813,18 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
                     # gecorrigeerde UIT-stand (resolved=old_on=False) vast -- de actor klapt
                     # dus niet terug naar AAN. Een via events gemiste omschakeling wordt dan
                     # pas de volgende (niet-overslaande) ronde opgepikt (max ~2x interval).
+                    # Ook hier UMR200-ventilatie nooit overslaan (René, 21 okt 2026):
+                    # anders zou half-rate een divergente vent-unit alsnog tot ~2x
+                    # het interval (~20 min) stale houden en zijn "binnen één cyclus"-
+                    # garantie breken. Vent-units lezen we dus elke vangnet-cyclus,
+                    # ongeacht de half-rate-instelling.
                     skip_divergent_read = (
                         skip_divergent_cycle
                         and not confirm_startup
                         and old_on is False
                         and is_on
                         and dsuid in self._joker_divergence_warned
+                        and dsuid not in vent_dsuids
                     )
                     # Vangnet-cap (René, 20 okt 2026). skip_runtime_read houdt resolved=is_on
                     # (AAN) vast zonder getOutputValue te lezen. Omdat de dSS-API bij een
