@@ -325,6 +325,10 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
         # een fysiek-uitgeschakelde actor die isOn=true blijft melden niet onbeperkt op
         # AAN blijft staan. Een callScene-event op de zone reset de teller (René, 20 okt).
         self._joker_skip_count: dict[str, int] = {}
+        # dsuids waarvan de eerstvolgende geforceerde read NIET door de natuurlijke cap
+        # komt maar door een callScene-event (René, 21 okt). Alleen voor de DEBUG-log,
+        # zodat in de log zichtbaar is waarom de read werd geforceerd.
+        self._joker_callscene_reset: set[str] = set()
 
     def button_devices(self) -> dict[str, dict]:
         """Devices that emit dSS ``buttonClick`` events (rockers / pushbuttons).
@@ -814,11 +818,21 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
                             # Cap bereikt: deze cyclus tóch lezen (val door naar de read-tak).
                             skip_runtime_read = False
                             self._joker_skip_count[dsuid] = 0
-                            _LOGGER.debug(
-                                "[DS-DEBUG] Joker-actor %s (%s): skip-cap (%d) bereikt -> "
-                                "getOutputValue-vangnet-read geforceerd",
-                                dsuid, dev.get("name", ""), MAX_JOKER_SKIP_CYCLES,
-                            )
+                            via_callscene = dsuid in self._joker_callscene_reset
+                            self._joker_callscene_reset.discard(dsuid)
+                            if via_callscene:
+                                _LOGGER.debug(
+                                    "[DS-DEBUG] Joker-actor %s (%s): read geforceerd door "
+                                    "callScene-reset (teller teruggezet naar de cap, niet door "
+                                    "%d opeenvolgende overslagen)",
+                                    dsuid, dev.get("name", ""), MAX_JOKER_SKIP_CYCLES,
+                                )
+                            else:
+                                _LOGGER.debug(
+                                    "[DS-DEBUG] Joker-actor %s (%s): skip-cap (%d) bereikt -> "
+                                    "getOutputValue-vangnet-read geforceerd",
+                                    dsuid, dev.get("name", ""), MAX_JOKER_SKIP_CYCLES,
+                                )
                         else:
                             self._joker_skip_count[dsuid] = skips + 1
                     if skip_runtime_read:
@@ -839,6 +853,7 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
                     elif not confirm_startup and old_on is not None and is_on:
                         # Een echte getOutputValue-read: de overslagreeks is onderbroken.
                         self._joker_skip_count[dsuid] = 0
+                        self._joker_callscene_reset.discard(dsuid)
                         run_out_val = -1
                         try:
                             run_out_val = await self.api.get_device_output_value(dsuid)
@@ -2612,6 +2627,9 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
                         # stand, dus forceer dat de volgende vangnet-cyclus deze actor
                         # écht leest i.p.v. op een lopende overslagreeks te vertrouwen.
                         self._joker_skip_count[dev["dsuid"]] = MAX_JOKER_SKIP_CYCLES
+                        # Markeer dat de eerstvolgende geforceerde read uit déze callScene
+                        # komt, zodat de DEBUG-log dat onderscheidt van de natuurlijke cap.
+                        self._joker_callscene_reset.add(dev["dsuid"])
 
                 _LOGGER.debug(
                     "Event %s: zone=%d group=%d scene=%d",
