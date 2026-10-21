@@ -1,0 +1,6 @@
+#!/bin/bash
+# Houdt manifest.json en const.py op dezelfde versie, en toetst de versiebepaling.
+# Aanzetten: git config core.hooksPath .githooks
+set -e
+python3 scripts/check_version_sync.py
+python3 tests/test_integration_version.py > /dev/null && echo "versiebepaling: alle gevallen goed"

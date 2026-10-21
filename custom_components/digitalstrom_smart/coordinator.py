@@ -128,6 +128,7 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
         self._event_task: asyncio.Task | None = None
         self._binary_poll_task: asyncio.Task | None = None
         self._reconnect_delay = RECONNECT_INITIAL
+        self._version_cache: str = ""   # eigen versie uit de manifest, zie _integration_version
 
         # Vangnet-cadans voor de joker-actor live-confirm + climate-status-poll.
         # Beide zijn alleen vangnet (events houden ze tussendoor live), dus draaien
@@ -3013,6 +3014,37 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
             self.pro_enabled = result["valid"]
             self.hass.config_entries.async_schedule_reload(self.entry_id)
 
+    async def _integration_version(self) -> str:
+        """Version of THIS integration, read from its manifest.
+
+        The manifest is what HACS installs and updates, so it is the only
+        thing that is guaranteed to match what the user is actually running.
+        A hand-maintained constant drifts: between August and October 2026
+        every installation reported 4.1.9 while 4.2.0 - 4.2.2 were already
+        in the field, which made the fleet overview useless. The constant is
+        kept only as a fallback for the (unlikely) case that the integration
+        cannot be looked up.
+        """
+        if self._version_cache:
+            return self._version_cache
+        version = INTEGRATION_VERSION
+        try:
+            from homeassistant.loader import async_get_integration
+
+            integration = await async_get_integration(self.hass, DOMAIN)
+            if integration.version:
+                version = str(integration.version)
+        except Exception as err:  # pragma: no cover - defensive
+            # Eén keer per draaiende integratie (het antwoord wordt gecachet), en
+            # met niveau warning: een meting die mislukt moet dat zeggen, anders
+            # staat er straks weer stilletjes een verkeerde versie in de vloot.
+            _LOGGER.warning(
+                "Could not read version from manifest (%s); reporting fallback %s",
+                err, INTEGRATION_VERSION,
+            )
+        self._version_cache = version
+        return version
+
     async def _send_telemetry(self) -> None:
         """Send anonymous ping to WoonIoT (best-effort, retry on fail)."""
         # Get HA version safely
@@ -3021,7 +3053,7 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
         except ImportError:
             ha_version = "unknown"
         payload = {
-            "v": INTEGRATION_VERSION,
+            "v": await self._integration_version(),
             "zones": len(self.zones),
             "devices": len(self.devices),
             "dss_id": self.dss_id[:8] if self.dss_id else "",
