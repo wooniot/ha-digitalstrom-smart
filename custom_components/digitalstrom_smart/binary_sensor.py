@@ -166,11 +166,13 @@ async def async_setup_entry(
         if enabled_zones and zone_id not in enabled_zones:
             continue
         for offset in VENTILATION_OUTPUT_OFFSETS:
-            # Only expose an output the dSS actually reported a level for. A
-            # UMR200 may use just one of its two outputs; the unused offset
-            # returns no value (René: 'ventilatieniveau uitgang 2 bestaat niet')
-            # → skip it instead of creating a phantom entity without value.
-            if coordinator.get_ventilation_output(dev["dsuid"], offset) is None:
+            # Offset 0 (de primaire ventilatie-uitgang) wordt ALTIJD aangemaakt, ook
+            # als de seed-poll nog geen waarde had: anders blijft de status-sensor na
+            # een herstart permanent "niet beschikbaar" (René, 21 okt 2026, punt 4).
+            # De tweede uitgang (offset>0) wordt alleen aangemaakt als de dSS er een
+            # niveau voor rapporteerde -- een UMR200 gebruikt vaak maar een uitgang
+            # (René: 'ventilatieniveau uitgang 2 bestaat niet'), geen fantoom-entiteit.
+            if offset != 0 and coordinator.get_ventilation_output(dev["dsuid"], offset) is None:
                 _LOGGER.debug(
                     "UMR200 %s (%s): geen output op offset=%d bij seed-poll — "
                     "sla ventilatiestatus-entiteit voor deze uitgang over",

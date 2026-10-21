@@ -332,9 +332,13 @@ async def async_setup_entry(
         if enabled_zones and zone_id not in enabled_zones:
             continue
         for offset in VENTILATION_OUTPUT_OFFSETS:
-            # Only expose an output the dSS actually reported a level for; skip
-            # an unused second output that returns no value (René, 28 aug 2026).
-            if coordinator.get_ventilation_output(dev["dsuid"], offset) is None:
+            # Offset 0 (de primaire ventilatie-uitgang) wordt ALTIJD aangemaakt,
+            # ook als de seed-poll nog geen waarde had: anders blijft de entiteit na
+            # een herstart permanent "niet beschikbaar" (René, 21 okt 2026, punt 4).
+            # De waarde vult zich op de eerstvolgende poll/event. Voor de optionele
+            # tweede uitgang (offset>0) blijft gelden: alleen aanmaken als de dSS er
+            # daadwerkelijk een niveau voor rapporteerde (geen fantoom-entiteit).
+            if offset != 0 and coordinator.get_ventilation_output(dev["dsuid"], offset) is None:
                 _LOGGER.debug(
                     "UMR200 %s (%s): geen output op offset=%d bij seed-poll — "
                     "sla ventilatieniveau-entiteit voor deze uitgang over",

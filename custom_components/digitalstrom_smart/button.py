@@ -91,6 +91,12 @@ class DigitalStromUserActionButton(CoordinatorEntity, ButtonEntity):
                 "Triggered User Defined Action %s (%s)",
                 self._action_id, self._action_name,
             )
+            # René (21 okt 2026, punt 3): een UDA die de woningventilatie schakelt
+            # geeft niet op elke installatie een callScene-event terug. Plan daarom
+            # na de knopdruk een gerichte herlezing van de groep-64-units in, zodat de
+            # stand in HA ook zonder event binnen enkele seconden klopt. No-op als er
+            # geen woningventilatie-units zijn.
+            self.coordinator.schedule_home_vent_refresh()
         except DigitalStromApiError as err:
             _LOGGER.error(
                 "Failed to trigger User Defined Action %s: %s",

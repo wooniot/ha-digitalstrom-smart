@@ -107,6 +107,21 @@ def _is_climate_control_active(control_mode) -> bool:
     return False
 
 
+def _vent_output_is_off(raw: int) -> bool:
+    """True als een ventilatie-UMR200-uitgang op/onder de rustdrempel staat.
+
+    Ventilatie-uitgangen rusten op ~5% (raw ~13). getState.isOn geeft voor élk
+    niveau >0 'true', dus de Joker-switch toont bij dat rustniveau ten onrechte
+    AAN. De echte relais-output (0..255) is de betrouwbare bron: op/onder
+    VENTILATION_ON_THRESHOLD_PCT = fysiek UIT (René, 21 okt 2026). Gedeeld door de
+    seed-poll en het event-pad zodat beide dezelfde beslissing nemen.
+    """
+    if raw < 0:
+        return False
+    pct = round(max(0, min(255, raw)) / 255 * 100)
+    return pct <= VENTILATION_ON_THRESHOLD_PCT
+
+
 class DigitalStromCoordinator(DataUpdateCoordinator):
     """Coordinator: manages event listener + periodic polling."""
 
@@ -205,6 +220,8 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
         # 2026). Dedupeert een burst van callScene-events op dezelfde zone zodat we
         # niet N overlappende reads op dezelfde UMR200-units afvuren.
         self._vent_refresh_zones: set[int] = set()
+        # Idem voor appartement-brede (groep-64) ventilatie-refreshes (René, 21 okt 2026).
+        self._vent_refresh_groups: set[int] = set()
 
         # Metering data
         self._circuit_power: dict[str, int] = {}  # dsuid -> watts
@@ -717,13 +734,6 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
         # Voor deze uitgangen geldt: output op/onder de ventilatiedrempel = fysiek UIT,
         # zodat switch én sensor met het relais overeenkomen. Commando's blijven gelijk.
         vent_dsuids = {d.get("dsuid") for d in self.get_umr200_devices() if d.get("dsuid")}
-
-        def _vent_output_is_off(raw: int) -> bool:
-            """True als een ventilatie-uitgang op/onder de drempel (rust) staat."""
-            if raw < 0:
-                return False
-            pct = round(max(0, min(255, raw)) / 255 * 100)
-            return pct <= VENTILATION_ON_THRESHOLD_PCT
 
         # (zone_id, dsuid, dev) waarvan de eerste seed 'false' was en die na settle
         # opnieuw gecheckt moeten worden — alleen relevant bij (her)start.
@@ -2466,6 +2476,19 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
         """Last-known {'raw', 'pct'} for a UMR200 output, or None if not polled yet."""
         return self._ventilation_outputs.get(dsuid, {}).get(offset)
 
+    def schedule_home_vent_refresh(self) -> None:
+        """Plan een gerichte herlezing van de woningventilatie (groep 64) in.
+
+        Gebruikt na een UDA-knopdruk in HA (René, 21 okt 2026, punt 3): op
+        installaties waar een User Defined Action geen callScene-event teruggeeft
+        zag je anders geen herlezing na het indrukken van bv. "Ventilatie 1". Veilig
+        voor niet-ventilatie-installaties: ``_refresh_vent_group`` stopt meteen als er
+        geen groep-64-unit is.
+        """
+        self.hass.async_create_task(
+            self._refresh_vent_group(GROUP_HOME_VENTILATION, VENT_EVENT_REFRESH_DELAY)
+        )
+
     async def _refresh_ventilation_zone(self, zone_id: int, delay: float) -> None:
         """Event-gedreven gerichte read van de UMR200-uitgangen in één zone.
 
@@ -2495,43 +2518,7 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
             if not devs:
                 return
 
-            changed = False
-            for dev in devs:
-                dsuid = dev["dsuid"]
-
-                # Switch: de Joker-controleschakelaar (getState.isOn).
-                try:
-                    is_on = await self.api.get_device_state(dsuid)
-                    if self.get_device_on_state(dsuid) != is_on:
-                        changed = True
-                    self.set_device_on_state(dsuid, is_on)
-                except Exception as err:  # noqa: BLE001 - per-unit, nooit fataal
-                    _LOGGER.debug(
-                        "Vent-event getState faalde %s (%s): %s",
-                        dsuid[:12], dev.get("name", ""), err,
-                    )
-
-                # Niveau + status: getOutputValue per offset (de directe relais-read).
-                per_offset: dict[int, dict] = {}
-                for offset in VENTILATION_OUTPUT_OFFSETS:
-                    if f"{dsuid}:{offset}" in self._umr200_bad_offsets:
-                        continue
-                    try:
-                        raw = int(await self.api.get_device_output_value(dsuid, offset) or 0)
-                    except Exception as err:  # noqa: BLE001 - per-offset, nooit fataal
-                        _LOGGER.debug(
-                            "Vent-event getOutputValue faalde %s offset=%d: %s",
-                            dsuid[:12], offset, err,
-                        )
-                        continue
-                    pct = round(max(0, min(255, raw)) / 255 * 100)
-                    per_offset[offset] = {"raw": raw, "pct": pct}
-                if per_offset:
-                    prev = self._ventilation_outputs.get(dsuid)
-                    if prev != {**(prev or {}), **per_offset}:
-                        changed = True
-                    self._ventilation_outputs.setdefault(dsuid, {}).update(per_offset)
-
+            changed = await self._read_vent_units(devs)
             _LOGGER.debug(
                 "Vent-event refresh zone=%d: %d UMR200-unit(s) herlezen (changed=%s)",
                 zone_id, len(devs), changed,
@@ -2542,6 +2529,102 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
             _LOGGER.debug("Vent-event refresh zone=%d faalde: %s", zone_id, err)
         finally:
             self._vent_refresh_zones.discard(zone_id)
+
+    async def _refresh_vent_group(self, group: int, delay: float) -> None:
+        """Event-gedreven gerichte read van alle UMR200-uitgangen in één groep.
+
+        Voor appartement-brede ventilatiescènes (GROUP_HOME_VENTILATION = 64, de
+        "woningventilatie") die als appartement-event binnenkomen (zone 0) en dus
+        NIET door ``_refresh_ventilation_zone`` worden opgepakt — het gat dat René
+        meldde (21 okt 2026): een callScene op groep 64 kwam alleen als aanwezigheid
+        binnen, de Overloop-units werden niet herlezen. We lezen per UMR200 in de
+        groep de relais-output en leiden switch + niveau + status daaruit af
+        (dezelfde output-first-logica als het zone-pad). Wordt ook gebruikt na een
+        UDA-knopdruk in HA (punt 3) voor installaties waar de UDA geen event geeft;
+        is er geen groep-64-unit, dan stopt dit meteen (geen onnodige bus-reads).
+        """
+        if group in self._vent_refresh_groups:
+            return
+        self._vent_refresh_groups.add(group)
+        try:
+            if delay > 0:
+                await asyncio.sleep(delay)
+
+            devs = [
+                d for d in self.get_umr200_devices()
+                if group in d.get("groups", []) and d.get("dsuid")
+            ]
+            if not devs:
+                return
+
+            changed = await self._read_vent_units(devs)
+            _LOGGER.debug(
+                "Vent-event refresh group=%d: %d UMR200-unit(s) herlezen (changed=%s)",
+                group, len(devs), changed,
+            )
+            if changed:
+                self.async_update_listeners()
+        except Exception as err:  # noqa: BLE001 - defensief, achtergrondtaak
+            _LOGGER.debug("Vent-event refresh group=%d faalde: %s", group, err)
+        finally:
+            self._vent_refresh_groups.discard(group)
+
+    async def _read_vent_units(self, devs: list[dict]) -> bool:
+        """Lees per UMR200 de relais-output en leid switch + niveau + status af.
+
+        Output-first (René, 21 okt 2026, beta14): de on-stand komt uit
+        getOutputValue(offset 0), NIET uit getState.isOn. getState geeft voor élk
+        niveau >0 'true' en meldt voor de bekende UMR200-uitgang ten onrechte
+        isOn=true op het rustniveau, waardoor een Midden-stand (alleen relais 1 aan)
+        als Boost (beide aan) werd gelezen. De output is de betrouwbare bron en
+        bespaart bovendien een bus-read. Alleen als offset 0 niet leesbaar is valt
+        dit terug op getState. Retourneert True als er iets veranderde.
+        """
+        changed = False
+        for dev in devs:
+            dsuid = dev["dsuid"]
+
+            # Niveau + status: getOutputValue per offset (de directe relais-read).
+            per_offset: dict[int, dict] = {}
+            for offset in VENTILATION_OUTPUT_OFFSETS:
+                if f"{dsuid}:{offset}" in self._umr200_bad_offsets:
+                    continue
+                try:
+                    raw = int(await self.api.get_device_output_value(dsuid, offset) or 0)
+                except Exception as err:  # noqa: BLE001 - per-offset, nooit fataal
+                    _LOGGER.debug(
+                        "Vent-event getOutputValue faalde %s offset=%d: %s",
+                        dsuid[:12], offset, err,
+                    )
+                    continue
+                pct = round(max(0, min(255, raw)) / 255 * 100)
+                per_offset[offset] = {"raw": raw, "pct": pct}
+            if per_offset:
+                prev = self._ventilation_outputs.get(dsuid)
+                if prev != {**(prev or {}), **per_offset}:
+                    changed = True
+                self._ventilation_outputs.setdefault(dsuid, {}).update(per_offset)
+
+            # Switch: leid de on-stand af uit de relais-output (offset 0), niet uit
+            # getState.isOn (zie docstring). Alleen als offset 0 ontbreekt -> getState.
+            primary = per_offset.get(0)
+            if primary is not None:
+                new_on = not _vent_output_is_off(primary["raw"])
+                if self.get_device_on_state(dsuid) != new_on:
+                    changed = True
+                self.set_device_on_state(dsuid, new_on)
+            else:
+                try:
+                    is_on = await self.api.get_device_state(dsuid)
+                    if self.get_device_on_state(dsuid) != is_on:
+                        changed = True
+                    self.set_device_on_state(dsuid, is_on)
+                except Exception as err:  # noqa: BLE001 - per-unit, nooit fataal
+                    _LOGGER.debug(
+                        "Vent-event getState faalde %s (%s): %s",
+                        dsuid[:12], dev.get("name", ""), err,
+                    )
+        return changed
 
     # =====================================================================
     # Event listener
@@ -2693,6 +2776,21 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
                     "Apartment event %s: scene=%d (presence=%s, alarms=%s)",
                     name, scene, self._apartment_presence, self._apartment_alarms,
                 )
+                # Woningventilatie (René, 21 okt 2026, punt 2). Een callScene op de
+                # appartement-ventilatiegroep (GROUP_HOME_VENTILATION = 64) komt binnen
+                # als appartement-event (zone 0) en werd tot nu toe alleen als
+                # aanwezigheid verwerkt -> de Overloop-units werden niet herlezen en de
+                # stand in HA veranderde niet. Start nu dezelfde gerichte read voor alle
+                # UMR200's in groep 64. Komt het event mét groep 64 binnen, dan triggert
+                # dat exact; geeft het event geen groep (0) mee, dan herlezen we groep 64
+                # bij elke appartement-callScene — dat zijn maar twee reads (advies René),
+                # en _refresh_vent_group stopt zelf als er geen groep-64-unit is.
+                if name == "callScene" and group in (0, GROUP_HOME_VENTILATION):
+                    self.hass.async_create_task(
+                        self._refresh_vent_group(
+                            GROUP_HOME_VENTILATION, VENT_EVENT_REFRESH_DELAY
+                        )
+                    )
                 self.async_update_listeners()
                 return
 
