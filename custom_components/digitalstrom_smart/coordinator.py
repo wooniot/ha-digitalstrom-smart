@@ -38,6 +38,7 @@ from .const import (
     GROUP_VENTILATION,
     GROUP_HOME_VENTILATION,
     GROUP_TEMP_CONTROL,
+    VENT_EVENT_REFRESH_DELAY,
     VENTILATION_OUTPUT_OFFSETS,
     VENTILATION_ON_THRESHOLD_PCT,
     MAX_JOKER_SKIP_CYCLES,
@@ -200,6 +201,10 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
         # offset 0 dan over om de dubbele read te vermijden (René, 20 okt 2026).
         # Wordt aan het begin van elk vangnet-blok geleegd.
         self._vent_offset0_fresh: set[str] = set()
+        # Zones waarvoor een event-gedreven ventilatie-refresh LOOPT (René, 21 okt
+        # 2026). Dedupeert een burst van callScene-events op dezelfde zone zodat we
+        # niet N overlappende reads op dezelfde UMR200-units afvuren.
+        self._vent_refresh_zones: set[int] = set()
 
         # Metering data
         self._circuit_power: dict[str, int] = {}  # dsuid -> watts
@@ -2443,6 +2448,83 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
         """Last-known {'raw', 'pct'} for a UMR200 output, or None if not polled yet."""
         return self._ventilation_outputs.get(dsuid, {}).get(offset)
 
+    async def _refresh_ventilation_zone(self, zone_id: int, delay: float) -> None:
+        """Event-gedreven gerichte read van de UMR200-uitgangen in één zone.
+
+        Aangestuurd door een callScene op GROUP_VENTILATION/GROUP_HOME_VENTILATION
+        (René, 21 okt 2026). We wachten ``delay`` seconden zodat de dSS de scène
+        heeft uitgevoerd en lezen dan per UMR200 in deze zone:
+          * getState.isOn -> de Joker-controleschakelaar (switch), en
+          * getOutputValue per offset -> het ventilatieniveau + de status-sensor
+            (running = pct > VENTILATION_ON_THRESHOLD_PCT).
+        Alleen de units in ``zone_id`` worden gelezen (1-2 reads per unit), dus dit
+        belast de ds485-bus minimaal. Dode offsets (``_umr200_bad_offsets``) worden
+        overgeslagen; het ~1×/min vangnet (fetch_joker_actuator_states +
+        fetch_ventilation_outputs) blijft de terugval voor gemiste events.
+        """
+        # Dedupe een burst events op dezelfde zone: één refresh tegelijk per zone.
+        if zone_id in self._vent_refresh_zones:
+            return
+        self._vent_refresh_zones.add(zone_id)
+        try:
+            if delay > 0:
+                await asyncio.sleep(delay)
+
+            devs = [
+                d for d in self.get_umr200_devices()
+                if d.get("zone_id") == zone_id and d.get("dsuid")
+            ]
+            if not devs:
+                return
+
+            changed = False
+            for dev in devs:
+                dsuid = dev["dsuid"]
+
+                # Switch: de Joker-controleschakelaar (getState.isOn).
+                try:
+                    is_on = await self.api.get_device_state(dsuid)
+                    if self.get_device_on_state(dsuid) != is_on:
+                        changed = True
+                    self.set_device_on_state(dsuid, is_on)
+                except Exception as err:  # noqa: BLE001 - per-unit, nooit fataal
+                    _LOGGER.debug(
+                        "Vent-event getState faalde %s (%s): %s",
+                        dsuid[:12], dev.get("name", ""), err,
+                    )
+
+                # Niveau + status: getOutputValue per offset (de directe relais-read).
+                per_offset: dict[int, dict] = {}
+                for offset in VENTILATION_OUTPUT_OFFSETS:
+                    if f"{dsuid}:{offset}" in self._umr200_bad_offsets:
+                        continue
+                    try:
+                        raw = int(await self.api.get_device_output_value(dsuid, offset) or 0)
+                    except Exception as err:  # noqa: BLE001 - per-offset, nooit fataal
+                        _LOGGER.debug(
+                            "Vent-event getOutputValue faalde %s offset=%d: %s",
+                            dsuid[:12], offset, err,
+                        )
+                        continue
+                    pct = round(max(0, min(255, raw)) / 255 * 100)
+                    per_offset[offset] = {"raw": raw, "pct": pct}
+                if per_offset:
+                    prev = self._ventilation_outputs.get(dsuid)
+                    if prev != {**(prev or {}), **per_offset}:
+                        changed = True
+                    self._ventilation_outputs.setdefault(dsuid, {}).update(per_offset)
+
+            _LOGGER.debug(
+                "Vent-event refresh zone=%d: %d UMR200-unit(s) herlezen (changed=%s)",
+                zone_id, len(devs), changed,
+            )
+            if changed:
+                self.async_update_listeners()
+        except Exception as err:  # noqa: BLE001 - defensief, achtergrondtaak
+            _LOGGER.debug("Vent-event refresh zone=%d faalde: %s", zone_id, err)
+        finally:
+            self._vent_refresh_zones.discard(zone_id)
+
     # =====================================================================
     # Event listener
     # =====================================================================
@@ -2613,6 +2695,22 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
                         # stand, dus forceer dat de volgende vangnet-cyclus deze actor
                         # écht leest i.p.v. op een lopende overslagreeks te vertrouwen.
                         self._joker_skip_count[dev["dsuid"]] = MAX_JOKER_SKIP_CYCLES
+
+                # Ventilatie (René, 21 okt 2026): een callScene op de
+                # ventilatiegroep is de directe aanleiding voor een gerichte read
+                # van de UMR200-uitgangen in deze zone. Zonder dit wachtte de
+                # switch/het niveau tot max. één vangnet-cyclus (bij half-rate tot
+                # ~12 min, door René gemeten). We lezen een paar seconden NA het
+                # event (dSS moet de scène eerst uitvoeren) en werken switch +
+                # niveau meteen bij. undoScene valt hier ook onder: ook dan wijzigt
+                # de fysieke stand. Een wijziging zónder group-10-event (bv. de
+                # woningventilatie die geen event afvuurt) blijft op het vangnet.
+                if group in (GROUP_VENTILATION, GROUP_HOME_VENTILATION):
+                    self.hass.async_create_task(
+                        self._refresh_ventilation_zone(
+                            zone_id, VENT_EVENT_REFRESH_DELAY
+                        )
+                    )
 
                 _LOGGER.debug(
                     "Event %s: zone=%d group=%d scene=%d",

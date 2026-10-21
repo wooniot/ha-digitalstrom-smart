@@ -12,7 +12,7 @@ INTEGRATION_URL = "https://github.com/wooniot/ha-digitalstrom-smart"
 # Alleen een TERUGVAL voor de telemetrie: de echte versie komt uit manifest.json
 # (zie coordinator._integration_version). Houd hem gelijk aan de manifest; de
 # controle in .github/workflows/validate.yml bewaakt dat.
-INTEGRATION_VERSION = "4.2.5-beta11"
+INTEGRATION_VERSION = "4.2.5-beta12"
 
 # Application name shown in dSS Configurator under registered applications
 DSS_APP_NAME = "WoonIoT HA Connect"
@@ -367,6 +367,15 @@ OUTDOOR_SENSOR_TRANSLATION_KEYS = {
 # actor logic would wrongly show ON). 10% of 255 = 25.5, so raw > 25 is ON.
 VENTILATION_ON_THRESHOLD_PCT = 10
 VENTILATION_OUTPUT_OFFSETS = (0, 1)
+# René (21 okt 2026): een callScene op de ventilatiegroep (10 of 64) is de
+# directe aanleiding voor een GERICHTE read van de UMR200-uitgangen in die zone,
+# i.p.v. tot maximaal één vangnet-cyclus te wachten (bij half-rate ~12 min, zoals
+# René op 21 okt mat: event 15:33:29, pas opgepikt 15:45:58). We lezen een paar
+# seconden NA het event (zodat de dSS de scène heeft uitgevoerd) alleen de
+# getState + getOutputValue van de UMR200-units in die zone en werken switch +
+# niveau meteen bij. Kost 1-2 reads per event; stand staat binnen enkele seconden
+# goed in HA. Wijzigingen zonder group-10-event blijven het vangnet als terugval.
+VENT_EVENT_REFRESH_DELAY = 3
 UMR200_HW_MARKER = "UMR200"
 # René (28 aug 2026): in de praktijk beantwoordt niet elke UMR200-dsuid beide
 # offsets — getOutputValue offset=1 faalt structureel op single-output units
