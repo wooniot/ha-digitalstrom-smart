@@ -987,6 +987,80 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
                                 "[DS-DEBUG] Joker-actor %s runtime: getState=%s outputValue=%s (akkoord)",
                                 dsuid, is_on, run_out_val,
                             )
+                    elif not confirm_startup and old_on is True and not is_on:
+                        # AAN->UIT runtime-transitie met output-kruischeck (René, 22 okt
+                        # 2026). Na een dSS-herstart met HA aan (dSS weg 18:09, terug 18:10)
+                        # geeft getState een tijd lang isOn=false voor actoren die fysiek
+                        # AAN staan (hydrofoorpomp, R1-R4, zonnescherm). Dit pad draait met
+                        # confirm_startup=False en vult pending_confirm NIET, dus de
+                        # settle-kruischeck (confirm_startup-tak) raakt het niet: zonder
+                        # eigen output-check zou de actor ten onrechte op UIT komen en daar
+                        # blijven staan. Symmetrisch aan de isOn=true->output=0-correctie
+                        # hierboven lezen we de rauwe relais-output; staat die fysiek AAN
+                        # (out_val>0, en geen vent-unit op rust), dan is de boot-'false'
+                        # onbetrouwbaar en houden we AAN vast.
+                        #
+                        # Bus-last begrenzen (externe review, 22 okt 2026). Zolang isOn
+                        # 'false' blijft terwijl de output >0 is, blijven we AAN houden —
+                        # dus blijft old_on True en vuurt deze tak ELKE ronde opnieuw (het
+                        # is dan geen eenmalige wissel meer maar een aanhoudend herstel-
+                        # venster). Zonder rem zou dat per actor elke ronde een
+                        # getOutputValue kosten, precies op een net-herstarte dSS. We
+                        # hergebruiken daarom de half-rate-vlag van de divergentie-set
+                        # (skip_divergent_cycle): op een overslag-ronde lezen we NIET maar
+                        # houden we de AAN-stand vast (resolved=old_on). Omdat we hier
+                        # alleen zijn met old_on True (een eerdere echte UIT had old_on al
+                        # op False gezet, dan raken we deze tak niet), is overslaan veilig:
+                        # een gemiste UIT komt via het event-pad binnen of hooguit één
+                        # niet-overslaande ronde later. Staat half-rate uit, dan lezen we
+                        # elke ronde (ongewijzigd gedrag).
+                        if skip_divergent_cycle:
+                            resolved = old_on
+                            _LOGGER.debug(
+                                "[DS-DEBUG] Joker-actor %s (%s) AAN->UIT: half-rate overslag-ronde "
+                                "-> getOutputValue overgeslagen, stand blijft %s",
+                                dsuid, dev.get("name", ""), old_on,
+                            )
+                            self._device_on_states[dsuid] = resolved
+                            continue
+                        self._joker_skip_count[dsuid] = 0
+                        trans_out_val = -1
+                        try:
+                            trans_out_val = await self.api.get_device_output_value(dsuid)
+                        except Exception as err:
+                            self._bus_errors_this_cycle += 1
+                            _LOGGER.debug(
+                                "Joker-actor AAN->UIT getOutputValue faalde %s: %s", dsuid, err
+                            )
+                        vent_rest = (
+                            dsuid in vent_dsuids and _vent_output_is_off(trans_out_val)
+                        )
+                        if trans_out_val > 0 and not vent_rest:
+                            # Relais fysiek AAN -> 'false' is onbetrouwbaar (dSS-boot). AAN houden.
+                            resolved = True
+                            _LOGGER.debug(
+                                "[DS-DEBUG] Joker-actor %s (%s) AAN->UIT: getState.isOn=false maar "
+                                "getOutputValue=%s (relais fysiek AAN) -> 'false' genegeerd, blijft AAN",
+                                dsuid, dev.get("name", ""), trans_out_val,
+                            )
+                        elif trans_out_val < 0:
+                            # Mislezing (-1): geen conclusie. Verwerp de dubieuze 'false' en
+                            # houd de vorige AAN-stand (= old_on) tot een geslaagde read.
+                            # Mirrort de misread-afhandeling van de isOn=true-divergentietak.
+                            resolved = old_on
+                            _LOGGER.debug(
+                                "[DS-DEBUG] Joker-actor %s (%s) AAN->UIT getOutputValue mislezen "
+                                "(-1) -> stand gehouden op %s (dubieuze 'false' verworpen)",
+                                dsuid, dev.get("name", ""), old_on,
+                            )
+                        else:
+                            # Output 0 (of vent-unit op rust): echt UIT. 'false' bevestigd.
+                            resolved = is_on
+                            _LOGGER.debug(
+                                "[DS-DEBUG] Joker-actor %s (%s) AAN->UIT: getOutputValue=%s "
+                                "(relais fysiek UIT) -> UIT bevestigd",
+                                dsuid, dev.get("name", ""), trans_out_val,
+                            )
 
                     self._device_on_states[dsuid] = resolved
                     if old_on is None:
