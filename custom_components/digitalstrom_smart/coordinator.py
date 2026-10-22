@@ -826,18 +826,33 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
                     # gecorrigeerde UIT-stand (resolved=old_on=False) vast -- de actor klapt
                     # dus niet terug naar AAN. Een via events gemiste omschakeling wordt dan
                     # pas de volgende (niet-overslaande) ronde opgepikt (max ~2x interval).
-                    # Ook hier UMR200-ventilatie nooit overslaan (René, 21 okt 2026):
-                    # anders zou half-rate een divergente vent-unit alsnog tot ~2x
-                    # het interval (~20 min) stale houden en zijn "binnen één cyclus"-
-                    # garantie breken. Vent-units lezen we dus elke vangnet-cyclus,
-                    # ongeacht de half-rate-instelling.
+                    # UMR200-ventilatie op RUSTNIVEAU mag nu óók overslaan op een
+                    # half-rate-ronde (René, 22 okt 2026). Tot beta15 waren vent-units
+                    # hier hard uitgesloten: een divergente vent-unit op rust kreeg
+                    # daardoor ELKE korte ronde een getOutputValue-read ("DIVERGENTIE
+                    # houdt aan ... outputValue=0"), goed voor ~3,6 s/unit. Nu de
+                    # group-10/64-events betrouwbaar aankomen (René: 53 herlezingen/
+                    # nacht) komt een ventilatiewijziging normaal via het event-pad
+                    # binnen; het vangnet hoeft niet elke ronde te lezen. We slaan de
+                    # read daarom ook voor een divergente vent-unit over MITS er al een
+                    # bekende offset-0-waarde is om te tonen (anders is er niets om vast
+                    # te houden en lezen we gewoon door). De stand blijft UIT
+                    # (resolved=old_on) en de ventilatiestap HERGEBRUIKT de cache (zie
+                    # de _vent_offset0_fresh-markering in de overslag-tak hieronder) —
+                    # zo verschuift de read niet van de joker- naar de ventilatiestap.
+                    # Omdat half-rate alleen de oneven ronden overslaat, is zo'n unit
+                    # zonder event hooguit ~één extra vangnet-ronde (~één interval) oud.
                     skip_divergent_read = (
                         skip_divergent_cycle
                         and not confirm_startup
                         and old_on is False
                         and is_on
                         and dsuid in self._joker_divergence_warned
-                        and dsuid not in vent_dsuids
+                        and (
+                            dsuid not in vent_dsuids
+                            or self._ventilation_outputs.get(dsuid, {}).get(0)
+                            is not None
+                        )
                     )
                     # Vangnet-cap (René, 20 okt 2026). skip_runtime_read houdt resolved=is_on
                     # (AAN) vast zonder getOutputValue te lezen. Omdat de dSS-API bij een
@@ -874,6 +889,13 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
                         )
                     elif skip_divergent_read:
                         resolved = old_on
+                        # Vent-unit overgeslagen: markeer offset-0 als 'vers' zodat
+                        # fetch_ventilation_outputs de laatst bekende waarde hergebruikt
+                        # i.p.v. hem alsnog te lezen (René, 22 okt 2026). Zonder deze
+                        # markering zou de read enkel van de joker- naar de ventilatie-
+                        # stap verschuiven en bleef de korte ronde ~3,6 s/unit duren.
+                        if dsuid in vent_dsuids:
+                            self._vent_offset0_fresh.add(dsuid)
                         _LOGGER.debug(
                             "[DS-DEBUG] Joker-actor %s (%s): blijvend divergent, half-rate "
                             "overslag-ronde -> getOutputValue overgeslagen, stand blijft %s",
