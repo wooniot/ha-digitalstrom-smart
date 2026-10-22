@@ -42,6 +42,7 @@ from .const import (
     VENTILATION_OUTPUT_OFFSETS,
     VENTILATION_ON_THRESHOLD_PCT,
     MAX_JOKER_SKIP_CYCLES,
+    VENT_MAX_SKIP_CYCLES,
     UMR200_HW_MARKER,
     UMR200_OFFSET_FAIL_LIMIT,
     DS485_INVALID_PARAMETER_MARKER,
@@ -797,23 +798,25 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
                     # gecorrigeerde actor niet terug naar AAN. Dit raakt precies de
                     # ~7 'akkoord'-reads/cyclus (~20 s) die René mat in beta6.
                     #
-                    # UITZONDERING — UMR200-ventilatie nooit overslaan (René, 21 okt
-                    # 2026). Een ventilatiewijziging ZONDER group-10/64-event (bv. de
-                    # woningventilatie op de Overloop die geen event afvuurt) valt op
-                    # het vangnet terug. Met de skip-cap (MAX_JOKER_SKIP_CYCLES=3) kon
-                    # zo'n unit in het slechtste geval 3 overgeslagen cyclussen + 1
-                    # wachten voor de getOutputValue-correctie -> >30 min stale terwijl
-                    # de stand direct zichtbaar is voor de gebruiker. Een UMR200 is maar
-                    # een paar goedkope reads; door 'm nooit over te slaan klopt de
-                    # ventilatie altijd binnen één vangnet-cyclus (~10 min). Kost hooguit
-                    # ~7 s/cyclus extra. (Het event-pad blijft de snelle weg, seconden.)
+                    # UMR200-ventilatie: weer ONDER de overslaregel, maar met een
+                    # lage cap (René, 22 okt 2026, punt 2). beta13 sloot vent-units
+                    # volledig van het overslaan uit, zodat ze elke korte ronde
+                    # ~14,5 s kostten (4 UMR200's x getOutputValue). Dat was nodig
+                    # zolang een ventilatiewijziging ZONDER event alleen via het
+                    # vangnet binnenkwam. Nu de group-10/64-events betrouwbaar
+                    # aankomen (René: 53 herlezingen/nacht) is dat niet meer nodig
+                    # in elke ronde. We laten vent-units dus weer overslaan, maar met
+                    # max 1 overslag (VENT_MAX_SKIP_CYCLES=1) i.p.v.
+                    # MAX_JOKER_SKIP_CYCLES=3: een wijziging zonder event is dan
+                    # hooguit twee vangnet-cycli oud (~20 min), terwijl de korte
+                    # rondes terugzakken naar ~1 s en de busbelasting van ~216 s/uur
+                    # naar ~150 s/uur. Het event-pad blijft de snelle weg (seconden).
                     skip_runtime_read = (
                         not confirm_startup
                         and old_on is not None
                         and is_on
                         and old_on == is_on
                         and dsuid not in self._joker_divergence_warned
-                        and dsuid not in vent_dsuids
                     )
                     # Half-rate voor de BLIJVEND-divergente set (opt-in, René 20 okt 2026).
                     # Een actor die al divergent is (in _joker_divergence_warned) staat op
@@ -842,16 +845,22 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
                     # zonder isOn-wijziging onbeperkt op AAN blijven staan. Forceer daarom een
                     # echte read na MAX_JOKER_SKIP_CYCLES opeenvolgende overslagen; de teller
                     # wordt ook door een callScene-event (zie _process_event) teruggezet.
+                    # Per-unit skip-cap: vent-UMR200's slaan hooguit 1 ronde over
+                    # (~20 min max stale), overige joker-actoren 3 (René, 22 okt 2026).
+                    max_skips = (
+                        VENT_MAX_SKIP_CYCLES if dsuid in vent_dsuids
+                        else MAX_JOKER_SKIP_CYCLES
+                    )
                     if skip_runtime_read:
                         skips = self._joker_skip_count.get(dsuid, 0)
-                        if skips >= MAX_JOKER_SKIP_CYCLES:
+                        if skips >= max_skips:
                             # Cap bereikt: deze cyclus tóch lezen (val door naar de read-tak).
                             skip_runtime_read = False
                             self._joker_skip_count[dsuid] = 0
                             _LOGGER.debug(
                                 "[DS-DEBUG] Joker-actor %s (%s): skip-cap (%d) bereikt -> "
                                 "getOutputValue-vangnet-read geforceerd",
-                                dsuid, dev.get("name", ""), MAX_JOKER_SKIP_CYCLES,
+                                dsuid, dev.get("name", ""), max_skips,
                             )
                         else:
                             self._joker_skip_count[dsuid] = skips + 1
@@ -861,7 +870,7 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
                             "divergent -> runtime getOutputValue overgeslagen (voorstel 3, "
                             "overslag %d/%d)",
                             dsuid, dev.get("name", ""),
-                            self._joker_skip_count.get(dsuid, 0), MAX_JOKER_SKIP_CYCLES,
+                            self._joker_skip_count.get(dsuid, 0), max_skips,
                         )
                     elif skip_divergent_read:
                         resolved = old_on
@@ -2580,7 +2589,15 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
         bespaart bovendien een bus-read. Alleen als offset 0 niet leesbaar is valt
         dit terug op getState. Retourneert True als er iets veranderde.
         """
-        changed = False
+        # Twee fasen (René, 22 okt 2026, optioneel detail). Een groep-64-herlezing
+        # leest de twee Overloop-units ~3,6 s uit elkaar. Muteerden we per unit
+        # meteen, dan kon een GELIJKTIJDIGE listener-update (binary-poll elke 5 s,
+        # of een event) in dat venster een tussenstand oppikken (bv. Boost ->
+        # Niveau 2 -> Niveau 1 in René's template). We lezen daarom EERST alle
+        # units (de enige awaits), en passen daarna alle mutaties in één keer toe
+        # zonder await ertussen -> atomair voor HA, geen tussenstand zichtbaar.
+        # Fase 1: alle reads.
+        reads: list[tuple[str, dict, bool | None]] = []
         for dev in devs:
             dsuid = dev["dsuid"]
 
@@ -2599,6 +2616,23 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
                     continue
                 pct = round(max(0, min(255, raw)) / 255 * 100)
                 per_offset[offset] = {"raw": raw, "pct": pct}
+
+            # Switch-fallback: alleen als offset 0 ontbreekt -> getState (ook een read,
+            # dus in fase 1). Output-first blijft de bron zodra offset 0 er wel is.
+            fallback_on: bool | None = None
+            if per_offset.get(0) is None:
+                try:
+                    fallback_on = await self.api.get_device_state(dsuid)
+                except Exception as err:  # noqa: BLE001 - per-unit, nooit fataal
+                    _LOGGER.debug(
+                        "Vent-event getState faalde %s (%s): %s",
+                        dsuid[:12], dev.get("name", ""), err,
+                    )
+            reads.append((dsuid, per_offset, fallback_on))
+
+        # Fase 2: alle mutaties in één keer, GEEN await ertussen -> atomair.
+        changed = False
+        for dsuid, per_offset, fallback_on in reads:
             if per_offset:
                 prev = self._ventilation_outputs.get(dsuid)
                 if prev != {**(prev or {}), **per_offset}:
@@ -2613,17 +2647,10 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
                 if self.get_device_on_state(dsuid) != new_on:
                     changed = True
                 self.set_device_on_state(dsuid, new_on)
-            else:
-                try:
-                    is_on = await self.api.get_device_state(dsuid)
-                    if self.get_device_on_state(dsuid) != is_on:
-                        changed = True
-                    self.set_device_on_state(dsuid, is_on)
-                except Exception as err:  # noqa: BLE001 - per-unit, nooit fataal
-                    _LOGGER.debug(
-                        "Vent-event getState faalde %s (%s): %s",
-                        dsuid[:12], dev.get("name", ""), err,
-                    )
+            elif fallback_on is not None:
+                if self.get_device_on_state(dsuid) != fallback_on:
+                    changed = True
+                self.set_device_on_state(dsuid, fallback_on)
         return changed
 
     # =====================================================================
@@ -3096,9 +3123,22 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
             # ~2×N calls/cyclus (getState + getOutputValue per actor), dus draait als
             # vangnet op ~1×/min i.p.v. elke hoofdcyclus (René, 26 aug 2026).
             poll_now = _time.time()
+            # Halve-poll-marge op de vangnet-drempel (René, 22 okt 2026, punt 1).
+            # De kale drempel (>= interval) vuurt pas op de EERSTE hoofdcyclus NA
+            # 600 s, zodat het werkelijke moment tot een volledige cyclus later
+            # drift (René mat 9,5-15,3 min i.p.v. ~10). Trek een halve hoofdpoll af
+            # zodat de vangnet-ronde rond de 600 s centreert i.p.v. er altijd boven
+            # te blijven. Veilig t.o.v. de vervallen 19-okt-drempel: die bias kwam
+            # van een KLEINE basis (60 s), hier is de basis 600 s, dus 585 s blijft
+            # ruim groter dan één (seriële) hoofdcyclus en vuurt niet elke ronde.
+            _half_poll = (
+                self.update_interval.total_seconds() / 2
+                if self.update_interval else 0
+            )
+            _confirm_due = max(0.0, self._joker_confirm_interval - _half_poll)
             if (
                 not self._startup_seed_pending
-                and poll_now - self._last_joker_confirm >= self._joker_confirm_interval
+                and poll_now - self._last_joker_confirm >= _confirm_due
             ):
                 self._last_joker_confirm = poll_now
                 # Nieuw vangnet-blok: de jokerstap vult _vent_offset0_fresh opnieuw,

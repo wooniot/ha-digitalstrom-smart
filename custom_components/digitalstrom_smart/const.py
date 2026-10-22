@@ -552,6 +552,12 @@ CONF_DIVERGENT_HALF_RATE = "divergent_half_rate"
 # René, 20 okt 2026. Een callScene-event op de zone reset de teller eveneens.
 MAX_JOKER_SKIP_CYCLES = 3
 
+# Lage skip-cap voor ventilatie-UMR200's (René, 22 okt 2026, punt 2). Vent-units
+# vallen weer onder de overslaregel (korte rondes ~1 s i.p.v. ~14,5 s), maar slaan
+# hooguit 1 vangnet-ronde over zodat een wijziging ZONDER event max ~2x het vangnet-
+# interval (~20 min) oud is. Het group-10/64-event blijft de snelle weg (seconden).
+VENT_MAX_SKIP_CYCLES = 1
+
 # --- Platforms ---
 # Free platforms (always loaded)
 PLATFORMS_FREE = ["light", "cover", "sensor", "scene", "switch", "binary_sensor", "button", "event"]
