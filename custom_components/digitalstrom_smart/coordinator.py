@@ -344,6 +344,12 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
         # actor-confirm. Alleen gebruikt om bij divergent_half_rate de oneven ronden
         # over te slaan voor de reeds-divergente set.
         self._joker_confirm_run: int = 0
+        # Of de LOPENDE vangnet-ronde een half-rate overslag-ronde is. De jokerstap
+        # (fetch_joker_actuator_states) zet deze vlag; de ventilatiestap
+        # (fetch_ventilation_outputs, draait direct erna in dezelfde ronde) leest
+        # hem om een rust-UMR200 (isOn=false, output op rustniveau) óók over te
+        # slaan (René, 22 okt 2026). Uit by default (geen half-rate).
+        self._skip_divergent_cycle: bool = False
         # Per-actor teller van opeenvolgende skip_runtime_read-overslagen (voorstel 3).
         # Bij MAX_JOKER_SKIP_CYCLES forceren we een getOutputValue-vangnet-read, zodat
         # een fysiek-uitgeschakelde actor die isOn=true blijft melden niet onbeperkt op
@@ -754,6 +760,10 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
             skip_divergent_cycle = (
                 self.divergent_half_rate and self._joker_confirm_run % 2 == 1
             )
+        # Deel de overslag-beslissing met de ventilatiestap (draait direct hierna in
+        # dezelfde vangnet-ronde). Op de seed-/startup-ronde (confirm_startup) blijft
+        # hij False, zodat de ventilatiestap bij de allereerste poll gewoon leest.
+        self._skip_divergent_cycle = skip_divergent_cycle
         for zone_id in list(self.zones):
             for dev in self.get_joker_actuators_in_zone(zone_id):
                 dsuid = dev.get("dsuid")
@@ -2399,6 +2409,33 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
                     if cached is not None:
                         per_offset[0] = cached
                     continue
+                # Rust-unit overslaan op een half-rate overslag-ronde (René, 22 okt
+                # 2026). Na een dSS-herstart geeft getState voor de UMR200's isOn=false;
+                # de jokerstap leest ze dan niet (geen divergentie) en vult
+                # _vent_offset0_fresh niet, zodat de ventilatiestap offset 0 ANDERS
+                # elke korte ronde zélf zou lezen (~3,6 s/unit). Staat de laatst bekende
+                # offset-0-output op rustniveau (fysiek UIT) én is de switch-stand False,
+                # dan valt er niets te corrigeren: houd de rust-waarde vast en lees hem
+                # op de overslag-ronde niet opnieuw. Een echte wijziging komt via de
+                # group-10/64-events binnen; zonder event is de waarde hooguit één extra
+                # vangnet-ronde (~één interval) oud, want half-rate slaat alleen de oneven
+                # ronden over. Behoud de cache in per_offset zodat de atomaire herschrijf
+                # onderaan (self._ventilation_outputs[dsuid] = per_offset) hem niet wist.
+                if offset == 0 and self._skip_divergent_cycle:
+                    cached = self._ventilation_outputs.get(dsuid, {}).get(0)
+                    if (
+                        cached is not None
+                        and _vent_output_is_off(cached["raw"])
+                        and self._device_on_states.get(dsuid) is False
+                    ):
+                        per_offset[0] = cached
+                        _LOGGER.debug(
+                            "[DS-DEBUG] Ventilatie-UMR200 %s (%s): half-rate overslag-ronde, "
+                            "offset-0 op rustniveau (raw=%s) en switch UIT -> getOutputValue "
+                            "overgeslagen, stand blijft False (events dekken wijzigingen)",
+                            dsuid[:12], dev.get("name", ""), cached.get("raw"),
+                        )
+                        continue
                 seed_key = f"{dsuid}:{offset}"
                 if seed_key in self._umr200_bad_offsets:
                     continue

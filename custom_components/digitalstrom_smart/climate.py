@@ -189,6 +189,28 @@ class DigitalStromClimate(CoordinatorEntity, ClimateEntity):
                 return default
         return default
 
+    @staticmethod
+    def _safe_control_value(value) -> float:
+        """ControlValue veilig naar float (0 bij None/onleesbaar).
+
+        René (22 okt 2026): na een dSS-herstart geeft getClimateStatus soms
+        ``ControlValue: null`` terug. ``status.get("ControlValue", 0)`` gaf dan None
+        (de default geldt alleen bij een ONTBREKENDE sleutel, niet bij een
+        aanwezige None), waarna ``control_value > 0`` een TypeError gooide en
+        hvac_action crashte (climate.py regel 262). None/leeg/onleesbaar telt nu als
+        0 (= IDLE), zodat de kaart blijft werken tot de dSS weer een getal levert.
+        """
+        if value is None:
+            return 0.0
+        if isinstance(value, (int, float)):
+            return float(value)
+        if isinstance(value, str):
+            try:
+                return float(value)
+            except ValueError:
+                return 0.0
+        return 0.0
+
     def _is_cooling_mode(self, status: dict) -> bool:
         """Detect if zone is in cooling mode.
 
@@ -243,22 +265,12 @@ class DigitalStromClimate(CoordinatorEntity, ClimateEntity):
         if not status:
             return None
         if self._is_cooling_mode(status):
-            control_value = status.get("ControlValue", 0)
-            if isinstance(control_value, str):
-                try:
-                    control_value = float(control_value)
-                except ValueError:
-                    control_value = 0
+            control_value = self._safe_control_value(status.get("ControlValue"))
             return HVACAction.COOLING if control_value > 0 else HVACAction.IDLE
         op_mode = self._safe_int(status.get("OperationMode"), 0)
         if op_mode == 0:
             return HVACAction.OFF
-        control_value = status.get("ControlValue", 0)
-        if isinstance(control_value, str):
-            try:
-                control_value = float(control_value)
-            except ValueError:
-                control_value = 0
+        control_value = self._safe_control_value(status.get("ControlValue"))
         if control_value > 0:
             if self._is_cooling_mode(status):
                 return HVACAction.COOLING
