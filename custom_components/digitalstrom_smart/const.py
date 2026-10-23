@@ -12,7 +12,7 @@ INTEGRATION_URL = "https://github.com/wooniot/ha-digitalstrom-smart"
 # Alleen een TERUGVAL voor de telemetrie: de echte versie komt uit manifest.json
 # (zie coordinator._integration_version). Houd hem gelijk aan de manifest; de
 # controle in .github/workflows/validate.yml bewaakt dat.
-INTEGRATION_VERSION = "4.2.5-beta18"
+INTEGRATION_VERSION = "4.2.5"
 
 # Application name shown in dSS Configurator under registered applications
 DSS_APP_NAME = "WoonIoT HA Connect"

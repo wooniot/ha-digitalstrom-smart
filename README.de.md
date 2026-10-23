@@ -214,6 +214,8 @@ Home Assistant
               └── device/turnOn / turnOff → Individuelle Joker-Schalter
 ```
 
+**Gut zu wissen.** Die Integration spricht über das Netzwerk mit dem dSS, jeder Befehl und jede Statusänderung ist also ein Hin und Zurück. Für Logik, die sofort sein muss - eine Lampe, die einem Tastendruck folgen soll, oder eine Verriegelung, auf die Sie sich verlassen - ist das dS-System selbst der bessere Ort: im dSS hinterlegen und Home Assistant mitlesen lassen. Digital Strom Smart ist dafür gebaut, Ihre Installation in Home Assistant sichtbar und bedienbar zu machen, nicht um den dSS als Echtzeitregler zu ersetzen.
+
 ## Unterstützte Hardware
 
 - **dSS20** (Minimum) oder neuerer Digital Strom Server
@@ -238,6 +240,20 @@ Digital Strom Smart unterstützt mehrere Sprachen für alle Entitätsnamen, Konf
 Home Assistant verwendet automatisch die richtige Sprache basierend auf Ihrer Systemspracheinstellung. Möchten Sie eine Übersetzung hinzufügen? PRs willkommen — erstellen Sie einfach eine neue JSON-Datei in `custom_components/digitalstrom_smart/translations/`.
 
 ## Änderungsprotokoll
+
+### v4.2.5 (2026-10-23) — Schnellerer Start, leichtere Bus-Last, zuverlässige Lüftung und Joker-Status
+
+- **Start in Sekunden statt Minuten.** Werteabfragen laufen im Hintergrund, Szenen- und Zonen-Seeds werden parallel geladen, und das Setup hat ein Zeitlimit mit Wiederholung, sodass ein langsamer dSS nicht mehr die gesamte Integration aufhält.
+- **Deutlich weniger Verkehr auf dem dS485-Bus.** Die Sicherheitsabfrage läuft jetzt in einem festen absoluten Intervall, dauerhaft abweichende Aktoren dürfen mit halber Rate geprüft werden, und die doppelte Leseoperation bei der Lüftung entfällt. Im Feld gemessen: von rund 1000 Anfragen pro Stunde auf 100 bis 250.
+- **Wohnraumlüftung (SW-UMR200) folgt dem dSS zuverlässig.** Gezielte, ereignisgesteuerte Abfrage bei `callScene`, Wohnungs-Events auf dS-Gruppe 64, tote Offsets sofort gesperrt und über Neustarts hinweg gemerkt, und ruhende Einheiten übersprungen, ohne die abweichenden zu verlieren.
+- **Joker-Aktoren: selbstkorrigierender Status.** Eine Laufzeit-Gegenprüfung korrigiert einen Aktor, der "ein" meldet, während sein Ausgang auf null steht - das konnte nach einem Neustart des dSS vorkommen.
+- **Bessere Diagnose.** Zeitmessung pro Schritt im Zyklus und dS485-Busfehler pro Zyklus auf DEBUG, und Abweichungen in einer Zeile zusammengefasst statt in einer langen Liste.
+
+Im Feld getestet von René van der Gaag über achtzehn Vorabversionen; die letzte Nacht lief sauber.
+
+### v4.2.4 (2026-10-20) — Korrekte Version in der Telemetrie
+
+- Der tägliche anonyme Ping nutzte eine handgepflegte Konstante, die seit August auf 4.1.9 stand, sodass fast die gesamte Flotte eine bedeutungslose Version meldete. Die Version stammt jetzt aus `manifest.json` - genau dem, was HACS installiert. Am Verhalten im Haus ändert sich nichts.
 
 ### v4.2.2 (2026-09-21) — Schnellere Bewegung/Anwesenheit, Home-Assistant-Deprecations behoben
 

@@ -227,6 +227,8 @@ Home Assistant
               └── device/turnOn / turnOff → Individual Joker switches
 ```
 
+**Good to know.** The integration talks to the dSS over the network, so every command and every state change is a round trip. For logic that must be instant - a light that has to follow a button press, or an interlock you depend on - the dS system itself is the better place: configure it in the dSS and let Home Assistant watch it. Digital Strom Smart is built to make your installation visible and controllable in Home Assistant, not to replace the dSS as a realtime controller.
+
 ## Supported hardware
 
 - **dSS20** (minimum) or newer Digital Strom Server
@@ -252,6 +254,20 @@ Digital Strom Smart supports multiple languages for all entity names, configurat
 Home Assistant automatically uses the correct language based on your system language setting. Want to add a translation? PRs welcome — just create a new JSON file in `custom_components/digitalstrom_smart/translations/`.
 
 ## Changelog
+
+### v4.2.5 (2026-10-23) — Faster startup, lighter bus, reliable ventilation and Joker status
+
+- **Startup in seconds instead of minutes.** Value fetches run in the background, scene and zone seeds are loaded in parallel, and setup has a timeout with retry so a slow dSS no longer blocks the whole integration.
+- **Much less traffic on the dS485 bus.** The safety poll now runs on a fixed absolute interval, persistently divergent actuators can be checked at half rate, and the double read on ventilation is gone. Measured in the field: from roughly 1000 requests per hour down to 100-250.
+- **Home ventilation (SW-UMR200) follows the dSS reliably.** Targeted event-driven reads on `callScene`, apartment events on dS group 64, dead offsets blocked immediately and remembered across restarts, and resting units skipped without losing the ones that diverge.
+- **Joker actuators: self-correcting status.** A runtime cross-check corrects an actuator that reports "on" while its output is zero, which could happen after a dSS restart.
+- **Better diagnostics.** Per-step timing of the cycle and dS485 bus errors per cycle on DEBUG, and divergences summarised in one line instead of a wall of them.
+
+Tested in the field by René van der Gaag across eighteen pre-releases; the final night ran clean.
+
+### v4.2.4 (2026-10-20) — Correct version in telemetry
+
+- The daily anonymous ping used a hand-maintained constant that had been stuck at 4.1.9 since August, so almost the whole fleet reported a version that meant nothing. The version now comes from `manifest.json`, which is what HACS actually installs. Nothing changes in how the integration behaves in your home.
 
 ### v4.2.2 (2026-09-21) — Faster motion/presence, Home Assistant deprecation fixes
 

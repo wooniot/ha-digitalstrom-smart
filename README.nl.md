@@ -221,6 +221,8 @@ Home Assistant
               └── device/turnOn / turnOff → Individuele Joker-schakelaars
 ```
 
+**Goed om te weten.** De integratie praat met de dSS over het netwerk, dus elke opdracht en elke statuswijziging is een heen-en-weertje. Voor logica die direct moet zijn - een lamp die een drukknop moet volgen, of een vergrendeling waar je op rekent - is het dS-systeem zelf de betere plek: leg het vast in de dSS en laat Home Assistant meekijken. Digital Strom Smart is gebouwd om je installatie zichtbaar en bedienbaar te maken in Home Assistant, niet om de dSS als realtime regelaar te vervangen.
+
 ## Ondersteunde hardware
 
 - **dSS20** (minimum) of nieuwere Digital Strom Server
@@ -246,6 +248,20 @@ Digital Strom Smart ondersteunt meerdere talen voor alle entiteitsnamen, configu
 Home Assistant gebruikt automatisch de juiste taal op basis van je systeemtaal. Een vertaling toevoegen? PR's zijn welkom — maak een nieuw JSON-bestand aan in `custom_components/digitalstrom_smart/translations/`.
 
 ## Wijzigingslog
+
+### v4.2.5 (2026-10-23) — Sneller opstarten, lichtere bus, betrouwbare ventilatie en Joker-status
+
+- **Opstarten in seconden in plaats van minuten.** Waarde-ophalingen draaien op de achtergrond, scene- en zone-seeds worden parallel geladen, en het opzetten heeft een time-out met herkansing, zodat een trage dSS niet langer de hele integratie ophoudt.
+- **Veel minder verkeer op de dS485-bus.** De vangnet-poll loopt nu op een vast absoluut interval, blijvend divergente actoren mogen op halve snelheid gecontroleerd worden, en de dubbele uitlezing op ventilatie is weg. In het veld gemeten: van ongeveer 1000 verzoeken per uur naar 100 tot 250.
+- **Huisventilatie (SW-UMR200) volgt de dSS betrouwbaar.** Gerichte, event-gedreven uitlezing op `callScene`, appartement-events op dS-groep 64, dode offsets meteen geblokkeerd en onthouden over herstarts heen, en rustende units overgeslagen zonder de afwijkende kwijt te raken.
+- **Joker-actoren: zelfcorrigerende status.** Een kruischeck tijdens bedrijf corrigeert een actor die "aan" meldt terwijl zijn uitgang op nul staat, wat kon gebeuren na een herstart van de dSS.
+- **Betere diagnose.** Per-stap timing van de cyclus en dS485-busfouten per cyclus op DEBUG, en divergenties samengevat in één regel in plaats van een muur eraan.
+
+In het veld getest door René van der Gaag over achttien pre-releases; de laatste nacht liep schoon.
+
+### v4.2.4 (2026-10-20) — Juiste versie in de telemetrie
+
+- De dagelijkse anonieme ping gebruikte een handmatig bijgehouden constante die sinds augustus op 4.1.9 bleef staan, waardoor vrijwel de hele vloot een versie meldde die nergens op sloeg. De versie komt nu uit `manifest.json`, precies wat HACS installeert. Aan de werking in huis verandert niets.
 
 ### v4.2.2 (2026-09-21) — Snellere beweging/aanwezigheid, Home Assistant-deprecaties opgelost
 
