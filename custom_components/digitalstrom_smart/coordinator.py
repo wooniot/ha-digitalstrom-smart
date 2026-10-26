@@ -2286,9 +2286,47 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
         discover the dynamic sets (motion zones, malfunction/service)."""
         states = await self.api.get_all_states()
         motion, malf, serv = [], [], []
+        light_changed = False
         for s in states:
             name = s.get("name", "")
             if not name:
+                continue
+            # René (26 okt 2026, vervolg): zone.N.light ook bij (her)start en elke
+            # cyclus doorzetten naar _zone_states. De lampseed komt uit
+            # getLastCalledScene; na een globale "alles uit" blijft dat een preset,
+            # dus na een herstart/reload stond de lamp in HA op AAN terwijl
+            # zone.N.light=inactive. Alleen bij een herkende waarde, en alleen als
+            # de stand afwijkt.
+            zl = _ZONE_LIGHT_STATE.match(name)
+            if zl:
+                zl_zone = int(zl.group(1))
+                raw = s.get("value")
+                raw_str = str(raw).strip().lower()
+                if raw_str in ("2", "inactive", "off", "false"):
+                    zl_on = False
+                elif raw_str in ("1", "active", "on", "true"):
+                    zl_on = True
+                else:
+                    zl_on = None
+                if zl_on is not None and zl_zone in self.zones:
+                    cur = self.get_zone_state(zl_zone, GROUP_LIGHT).get("is_on")
+                    if zl_on is False and cur is not False:
+                        self.zone_on_after_scene(zl_zone, GROUP_LIGHT, SCENE_OFF)
+                        self.set_zone_state(
+                            zl_zone, GROUP_LIGHT, scene=SCENE_OFF, is_on=False
+                        )
+                        light_changed = True
+                        _LOGGER.debug(
+                            "fetch_dss_states: zone.%d.light=inactive -> licht UIT",
+                            zl_zone,
+                        )
+                    elif zl_on is True and cur is not True:
+                        self.set_zone_state(zl_zone, GROUP_LIGHT, is_on=True)
+                        light_changed = True
+                        _LOGGER.debug(
+                            "fetch_dss_states: zone.%d.light=active -> licht AAN",
+                            zl_zone,
+                        )
                 continue
             m = MOTION_STATE_RE.match(name)
             if m:
@@ -2303,6 +2341,8 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
         self._motion_zones = sorted(set(motion))
         self._malfunction_names = malf
         self._service_names = serv
+        if light_changed:
+            self.async_update_listeners()
 
     async def fetch_outdoor_weather(self, data: dict | None = None) -> None:
         """Weather-service outdoor temperature + sun position (PRO). One call.
