@@ -6,6 +6,7 @@ scene discovery, sensor data, and state tracking.
 
 import asyncio
 import logging
+import re
 import time as _time
 from datetime import timedelta
 from typing import Any
@@ -84,6 +85,13 @@ _LOGGER = logging.getLogger(__name__)
 
 # Groups for which we create scene entities
 SCENE_GROUPS = (GROUP_LIGHT, GROUP_SHADE, GROUP_HEATING)
+
+# René (26 okt 2026): een globale "alles uit"-functie in de dSS-app stuurt géén
+# per-zone callScene (die zet alleen zone 0, en die tak stopte met return), maar
+# wél een zone.N.light-statuswijziging per kamer. Die status is de betrouwbaarste
+# bron voor de lichtstand; we zetten 'm door naar _zone_states (waar light.is_on
+# uit leest), niet alleen naar _user_states.
+_ZONE_LIGHT_STATE = re.compile(r"^zone\.(\d+)\.light$")
 
 # Bij (her)start heeft de dSS de ds485-bus nog niet herscand; getState kan dan een
 # pre-settle 'false' geven voor een Joker-ACTOR die fysiek AAN staat. We wachten deze
@@ -2933,8 +2941,8 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
                     if scene in ALARM_SCENE_NUMBERS:
                         self._apartment_alarms.discard(scene)
                 _LOGGER.debug(
-                    "Apartment event %s: scene=%d (presence=%s, alarms=%s)",
-                    name, scene, self._apartment_presence, self._apartment_alarms,
+                    "Apartment event %s: group=%d scene=%d (presence=%s, alarms=%s)",
+                    name, group, scene, self._apartment_presence, self._apartment_alarms,
                 )
                 # Woningventilatie (René, 21 okt 2026, punt 2). Een callScene op de
                 # appartement-ventilatiegroep (GROUP_HOME_VENTILATION = 64) komt binnen
@@ -3092,6 +3100,35 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
             dsuid = props.get("dsuid", "")
             state_name = props.get("statename", "")
             state_value = props.get("state", "")
+
+            # René (26 okt 2026): zone.N.light-status doorzetten naar _zone_states.
+            # Bij een globale "alles uit" krijgt zone 0 alleen een appartement-scene
+            # (die tak eindigt met return), maar elke kamer stuurt wél
+            # zone.N.light=inactive. Die status landde voorheen alleen in
+            # _user_states; de lampentiteit leest echter uit _zone_states, dus bleef
+            # de lamp in HA op AAN staan. Geen return: de bestaande
+            # user-state-afhandeling hieronder blijft ook draaien.
+            m = _ZONE_LIGHT_STATE.match(state_name or "")
+            if m:
+                zl_zone = int(m.group(1))
+                zl_str = str(state_value).lower()
+                if zl_str in ("inactive", "2"):
+                    # zelfde pad als callScene scene 0: wis ook de area-tracking
+                    self.zone_on_after_scene(zl_zone, GROUP_LIGHT, SCENE_OFF)
+                    self.set_zone_state(
+                        zl_zone, GROUP_LIGHT, scene=SCENE_OFF, is_on=False
+                    )
+                    _LOGGER.debug(
+                        "zone.%d.light=inactive: zone %d licht UIT", zl_zone, zl_zone
+                    )
+                    self.async_update_listeners()
+                elif zl_str in ("active", "1"):
+                    # scène niet overschrijven; die komt via de callScene van de zone
+                    self.set_zone_state(zl_zone, GROUP_LIGHT, is_on=True)
+                    _LOGGER.debug(
+                        "zone.%d.light=active: zone %d licht AAN", zl_zone, zl_zone
+                    )
+                    self.async_update_listeners()
 
             # Apartment-level state changes (rain, etc.) — no dsuid
             # dSS format: StateApartment;rain;1;active / StateApartment;rain;2;inactive
