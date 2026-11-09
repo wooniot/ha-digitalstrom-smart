@@ -38,6 +38,7 @@ from .const import (
 )
 from .coordinator import DigitalStromCoordinator
 from .license import check_pro_license as _check_pro_license, sync_pro_issue
+from .user_states import cleanup_skipped_user_states
 
 # Pre-import all platform modules to avoid blocking imports in event loop (HA 2026+)
 from . import (  # noqa: F401
@@ -308,6 +309,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # Reload the entry when options change so a new poll interval takes effect
     # immediately (no manual HA restart needed).
     entry.async_on_unload(entry.add_update_listener(_async_reload_on_options))
+
+    # One-time cleanup: drop stale user-state registry entries for names that are
+    # now in SKIP_USER_STATES (e.g. daynight/twilight/daylight/holiday, which live
+    # as fixed env binary_sensors). They are skipped before any platform is asked
+    # for them, so the duplicate-cleanup in user_state_platform() never reaches
+    # them and their old ds_{dss_id}_userstate_{name} entity stays orphaned. Must
+    # run BEFORE the platforms are forwarded. Idempotent (René, 9 nov 2026).
+    cleanup_skipped_user_states(hass, dss_id)
 
     # Forward to platforms
     platforms = list(PLATFORMS_FREE)
