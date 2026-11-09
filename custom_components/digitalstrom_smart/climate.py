@@ -98,6 +98,12 @@ class DigitalStromClimate(CoordinatorEntity, ClimateEntity):
     """A Digital Strom zone thermostat with heating and cooling support."""
 
     _attr_has_entity_name = True
+    # HA 2026.11 hernoemde de climate-temperatuur-API naar native_* (de oude
+    # namen stoppen met werken in HA 2027.11). Deze klasse biedt BEIDE aan:
+    # HA >= 2026.11 gebruikt de native_* members (migrate_deprecated_entity_members
+    # kiest native wanneer een klasse beide levert en meldt dan geen deprecation),
+    # oudere releases (hacs.json staat 2024.1+ toe) lezen nog de oude namen.
+    _attr_native_temperature_unit = UnitOfTemperature.CELSIUS
     _attr_temperature_unit = UnitOfTemperature.CELSIUS
     # HA deprecation (Core 2024.2+, enforced in a future release): a climate
     # entity that can be switched on/off via hvac_mode MUST declare the
@@ -136,13 +142,16 @@ class DigitalStromClimate(CoordinatorEntity, ClimateEntity):
         }
 
     @property
-    def current_temperature(self) -> float | None:
+    def native_current_temperature(self) -> float | None:
         status = self.coordinator.get_climate_status(self._zone_id)
         if status:
             temp = status.get("TemperatureValue")
             if temp and temp > 0:
                 return temp
         return self.coordinator.get_current_temperature(self._zone_id)
+
+    # Naam die Home Assistant < 2026.11 leest (zie _attr_native_temperature_unit).
+    current_temperature = native_current_temperature
 
     @property
     def current_humidity(self) -> float | None:
@@ -168,13 +177,16 @@ class DigitalStromClimate(CoordinatorEntity, ClimateEntity):
         return None
 
     @property
-    def target_temperature(self) -> float | None:
+    def native_target_temperature(self) -> float | None:
         status = self.coordinator.get_climate_status(self._zone_id)
         if status:
             nv = status.get("NominalValue")
             if nv and nv > 0:
                 return nv
         return self.coordinator.get_temperature(self._zone_id)
+
+    # Naam die Home Assistant < 2026.11 leest (zie _attr_native_temperature_unit).
+    target_temperature = native_target_temperature
 
     def _safe_int(self, value, default: int = 0) -> int:
         """Convert value to int safely (dSS may return strings)."""
