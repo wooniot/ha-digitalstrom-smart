@@ -18,6 +18,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN, MANUFACTURER, GROUP_JOKER, GROUP_HEATING, GROUP_VENTILATION, GROUP_COOLING, GROUP_NAMES, CONF_ENABLED_ZONES, APARTMENT_WEATHER_SCENES, WEATHER_TRANSLATION_KEYS, SCENE_RAIN, APARTMENT_ALARM_SCENES, ALARM_BINARY_SENSOR_KEYS, SCENE_FIRE, SCENE_DOOR_BELL, APARTMENT_SYSTEM_STATES, APARTMENT_ENV_STATES, VENTILATION_ON_THRESHOLD_PCT, VENTILATION_OUTPUT_OFFSETS
 from .coordinator import DigitalStromCoordinator
+from .user_states import user_state_platform
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -133,7 +134,7 @@ async def async_setup_entry(
     # --- PRO: User Defined States that behave as binary (active/inactive) ---
     if coordinator.pro_enabled:
         for name, data in coordinator.user_states.items():
-            if _is_binary_state(data):
+            if user_state_platform(hass, coordinator.dss_id, name, data) == "binary_sensor":
                 entities.append(DigitalStromUserBinaryState(coordinator, name))
 
     # --- PRO: Configurator User Defined States (custom-states with proper names) ---
@@ -184,17 +185,6 @@ async def async_setup_entry(
             )
 
     async_add_entities(entities)
-
-
-def _is_binary_state(data: dict) -> bool:
-    """Mirror of sensor._is_binary_state — keep them in sync."""
-    state = str(data.get("state", "")).lower()
-    if state in ("active", "inactive"):
-        return True
-    value = data.get("value")
-    if isinstance(value, (int, float)) and value in (1, 2):
-        return True
-    return False
 
 
 class DigitalStromJokerBinarySensor(CoordinatorEntity, BinarySensorEntity):
@@ -517,6 +507,8 @@ class DigitalStromUserBinaryState(CoordinatorEntity, BinarySensorEntity):
         if state == "inactive":
             return False
         value = data.get("value")
+        if isinstance(value, bool):
+            return value
         if value == 1:
             return True
         if value == 2:

@@ -606,6 +606,11 @@ SKIP_USER_STATES = {
     "panic",
     "presence",      # exposed via select.presence_mode (Pro)
     "hibernation",
+    # Already created as fixed binary_sensors via APARTMENT_ENV_STATES —
+    # don't import them a second time as user states. NB: daynight_indoors is
+    # NOT in APARTMENT_ENV_STATES, so it is intentionally left out here and
+    # handled by the stable platform choice in user_states.py instead.
+    "daynight", "twilight", "daylight", "holiday",
 }
 
 # State value mapping: dSS internally encodes "active"=1, "inactive"=2 for binary states

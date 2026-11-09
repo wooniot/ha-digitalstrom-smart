@@ -54,6 +54,7 @@ from .const import (
     VENTILATION_OUTPUT_OFFSETS,
 )
 from .coordinator import DigitalStromCoordinator
+from .user_states import user_state_platform
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -317,7 +318,7 @@ async def async_setup_entry(
     # --- PRO: User Defined States (text sensors; binary ones live in binary_sensor) ---
     if coordinator.pro_enabled:
         for name, data in coordinator.user_states.items():
-            if _is_binary_state(data):
+            if user_state_platform(hass, coordinator.dss_id, name, data) != "sensor":
                 continue
             entities.append(DigitalStromUserStateSensor(coordinator, name))
 
@@ -350,17 +351,6 @@ async def async_setup_entry(
             )
 
     async_add_entities(entities)
-
-
-def _is_binary_state(data: dict) -> bool:
-    """Return True if a dSS state behaves as binary (active/inactive)."""
-    state = str(data.get("state", "")).lower()
-    if state in ("active", "inactive"):
-        return True
-    value = data.get("value")
-    if isinstance(value, (int, float)) and value in (1, 2):
-        return True
-    return False
 
 
 class DigitalStromEnergySensor(CoordinatorEntity, SensorEntity):
