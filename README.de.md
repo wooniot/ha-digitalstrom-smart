@@ -241,6 +241,15 @@ Home Assistant verwendet automatisch die richtige Sprache basierend auf Ihrer Sy
 
 ## Änderungsprotokoll
 
+### v4.2.6 (2026-11-10) — Licht nach „Alles aus", stabile User States, bereit für HA 2026.11
+
+- **Licht folgt einem globalen „Alles aus".** Ein „Alles aus" aus der dSS-App, über Alexa oder eine Anwesenheitsszene ließ Lichter in Home Assistant eingeschaltet. Der Lichtzustand pro Raum aktualisiert jetzt die Licht-Entität, live und nach einem Neustart oder Reload (Issue #53).
+- **Klima bereit für HA 2026.11.** Die Klima-Entität liefert die neuen `native_*`-Temperatureigenschaften neben den alten Namen; die Deprecation-Warnungen sind weg und sie funktioniert auch nach HA 2027.11.
+- **User States behalten ihren Entitätstyp.** Ein User State des dSS wechselt beim Neustart nicht mehr zwischen sensor und binary_sensor, was eine zweite Entität erzeugte und die alte als nicht verfügbar zurückließ. Vorhandene Duplikate und verwaiste Einträge werden beim nächsten Start automatisch bereinigt.
+- **Keine doppelten Umgebungszustände.** Tag/Nacht, Dämmerung, Tageslicht und Urlaub gibt es nur noch einmal, als feste Binärsensoren.
+
+Gemeldet von René van der Gaag und getestet in den Pre-Releases v4.2.6-beta1 bis beta5.
+
 ### v4.2.5 (2026-10-23) — Schnellerer Start, leichtere Bus-Last, zuverlässige Lüftung und Joker-Status
 
 - **Start in Sekunden statt Minuten.** Werteabfragen laufen im Hintergrund, Szenen- und Zonen-Seeds werden parallel geladen, und das Setup hat ein Zeitlimit mit Wiederholung, sodass ein langsamer dSS nicht mehr die gesamte Integration aufhält.

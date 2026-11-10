@@ -255,6 +255,15 @@ Home Assistant automatically uses the correct language based on your system lang
 
 ## Changelog
 
+### v4.2.6 (2026-11-10) — Lights after "all off", stable user states, ready for HA 2026.11
+
+- **Lights follow a global "all off".** An "all off" from the dSS app, Alexa or a presence scene left lights on in Home Assistant. The per-room light state now updates the light entity, live and after a restart or reload (issue #53).
+- **Climate ready for HA 2026.11.** The climate entity provides the new `native_*` temperature properties next to the old names, so the deprecation warnings are gone and it keeps working after HA 2027.11.
+- **User states keep their entity type.** A dSS user state no longer switches between sensor and binary_sensor on restart, which created a second entity and left the old one unavailable. Existing duplicates and orphaned entries are cleaned up automatically on the next start.
+- **No duplicate environment states.** Day/night, twilight, daylight and holiday exist once, as fixed binary sensors.
+
+Reported by René van der Gaag and tested in pre-releases v4.2.6-beta1 to beta5.
+
 ### v4.2.5 (2026-10-23) — Faster startup, lighter bus, reliable ventilation and Joker status
 
 - **Startup in seconds instead of minutes.** Value fetches run in the background, scene and zone seeds are loaded in parallel, and setup has a timeout with retry so a slow dSS no longer blocks the whole integration.

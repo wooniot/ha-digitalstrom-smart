@@ -249,6 +249,15 @@ Home Assistant gebruikt automatisch de juiste taal op basis van je systeemtaal. 
 
 ## Wijzigingslog
 
+### v4.2.6 (2026-11-10) — Lampen na "alles uit", stabiele user states, klaar voor HA 2026.11
+
+- **Lampen volgen een globale "alles uit".** Een "alles uit" vanuit de dSS-app, Alexa of een aanwezigheidsscène liet lampen in Home Assistant op aan staan. De lichtstatus per kamer werkt nu de lampentiteit bij, live en na een herstart of reload (issue #53).
+- **Klimaat klaar voor HA 2026.11.** De klimaatentiteit levert de nieuwe `native_*`-temperatuureigenschappen naast de oude namen, zodat de waarschuwingen weg zijn en hij blijft werken na HA 2027.11.
+- **User states houden hun entiteitstype.** Een user state van de dSS wisselt bij een herstart niet meer tussen sensor en binary_sensor, wat een tweede entiteit gaf en de oude onbeschikbaar achterliet. Bestaande dubbele en verweesde registraties worden bij de volgende start automatisch opgeruimd.
+- **Geen dubbele omgevingsstatussen.** Dag/nacht, schemering, daglicht en vakantie bestaan nog één keer, als vaste binaire sensor.
+
+Gemeld door René van der Gaag en getest in de pre-releases v4.2.6-beta1 t/m beta5.
+
 ### v4.2.5 (2026-10-23) — Sneller opstarten, lichtere bus, betrouwbare ventilatie en Joker-status
 
 - **Opstarten in seconden in plaats van minuten.** Waarde-ophalingen draaien op de achtergrond, scene- en zone-seeds worden parallel geladen, en het opzetten heeft een time-out met herkansing, zodat een trage dSS niet langer de hele integratie ophoudt.
