@@ -12,7 +12,7 @@ INTEGRATION_URL = "https://github.com/wooniot/ha-digitalstrom-smart"
 # Alleen een TERUGVAL voor de telemetrie: de echte versie komt uit manifest.json
 # (zie coordinator._integration_version). Houd hem gelijk aan de manifest; de
 # controle in .github/workflows/validate.yml bewaakt dat.
-INTEGRATION_VERSION = "4.2.6"
+INTEGRATION_VERSION = "4.2.7-beta1"
 
 # Application name shown in dSS Configurator under registered applications
 DSS_APP_NAME = "WoonIoT HA Connect"
@@ -611,6 +611,21 @@ SKIP_USER_STATES = {
     # NOT in APARTMENT_ENV_STATES, so it is intentionally left out here and
     # handled by the stable platform choice in user_states.py instead.
     "daynight", "twilight", "daylight", "holiday",
+    # twilight_state / daylight_state geven dezelfde informatie als de vaste
+    # env-sensoren Schemering (twilight) en Daglicht (daylight) hierboven en zijn
+    # dus dubbel — overslaan en hun oude registratie opruimen (René, 10 nov 2026).
+    "twilight_state", "daylight_state",
+}
+
+# Leesbare labels voor apartment-user-states die anders een rauwe technische
+# sleutel als naam tonen. Elke sleutel die hier niet staat valt in
+# friendly_state_name() terug op een opgeschoonde naam (underscores -> spaties,
+# hoofdletters), zodat geen enkele entiteit nog een underscore toont (René, 10 nov 2026).
+USER_STATE_LABELS = {
+    "daynight_indoors":    "Dag/nacht binnen",
+    "heating_system":      "Verwarmingssysteem",
+    "heating_system_mode": "Verwarmingssysteem modus",
+    "heating_water_system": "Verwarming watersysteem",
 }
 
 # State value mapping: dSS internally encodes "active"=1, "inactive"=2 for binary states

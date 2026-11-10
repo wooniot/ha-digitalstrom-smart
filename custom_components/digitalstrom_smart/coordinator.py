@@ -76,6 +76,7 @@ from .const import (
     SCENE_RAIN,
     USER_ACTION_SOURCE,
     SKIP_USER_STATES,
+    USER_STATE_LABELS,
     STATE_VALUE_ACTIVE,
     SENSOR_ACTIVE_POWER,
     SENSOR_ACTIVE_ENERGY,
@@ -1142,9 +1143,18 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
         # details staan op DEBUG. Een blijvende divergentie wordt zo nog steeds elke
         # poll gecorrigeerd, maar vult het log niet langer bij elke herstart.
         if newly_divergent:
-            _LOGGER.warning(
-                "DIVERGENTIE: %d actor(en) melden getState.isOn=true terwijl de relais-"
+            # Onderscheid de eerste vangnet-cyclus na de setup van normaal bedrijf
+            # (René, 10 nov 2026). Bij elke herstart is _joker_divergence_warned leeg,
+            # dus de eerste runtime-vangnetronde (_joker_confirm_run == 1) ziet alle op
+            # dat moment al divergente actoren als 'nieuw'. Dat is geen divergentie die
+            # TIJDENS bedrijf ontstond -> log die op INFO. Alleen divergentie die later,
+            # tijdens normaal bedrijf, nieuw opkomt blijft WARNING.
+            first_runtime_cycle = not confirm_startup and self._joker_confirm_run == 1
+            log = _LOGGER.info if first_runtime_cycle else _LOGGER.warning
+            log(
+                "DIVERGENTIE (%s): %d actor(en) melden getState.isOn=true terwijl de relais-"
                 "output fysiek UIT staat -> gecorrigeerd naar UIT: %s (details op DEBUG)",
+                "eerste vangnet-cyclus na herstart" if first_runtime_cycle else "tijdens bedrijf",
                 len(newly_divergent), ", ".join(newly_divergent),
             )
 
@@ -2072,7 +2082,14 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
             if dev and dev.get("name"):
                 suffix = parts[-1].replace("_", " ").title()
                 return f"{dev['name']} {suffix}"
-        return state_name
+        # Apartment-level state (geen dev.-prefix), of een dev-state die we niet
+        # konden oplossen: gebruik een bekende vertaalsleutel/label, en val anders
+        # terug op een opgeschoonde naam (underscores -> spaties, hoofdletters).
+        # Zo toont geen enkele entiteit nog een rauwe technische sleutel of een
+        # underscore als friendly_name (René, 10 nov 2026).
+        if state_name in USER_STATE_LABELS:
+            return USER_STATE_LABELS[state_name]
+        return state_name.replace("_", " ").title()
 
     def get_device_sensor_value(self, dsuid: str, sensor_type: int) -> float | None:
         """Get a device sensor value by type."""
