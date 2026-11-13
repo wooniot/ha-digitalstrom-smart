@@ -76,6 +76,7 @@ from .const import (
     SCENE_RAIN,
     USER_ACTION_SOURCE,
     SKIP_USER_STATES,
+    USER_STATE_LABELS,
     STATE_VALUE_ACTIVE,
     SENSOR_ACTIVE_POWER,
     SENSOR_ACTIVE_ENERGY,
@@ -1142,9 +1143,18 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
         # details staan op DEBUG. Een blijvende divergentie wordt zo nog steeds elke
         # poll gecorrigeerd, maar vult het log niet langer bij elke herstart.
         if newly_divergent:
-            _LOGGER.warning(
-                "DIVERGENTIE: %d actor(en) melden getState.isOn=true terwijl de relais-"
+            # Onderscheid de eerste vangnet-cyclus na de setup van normaal bedrijf
+            # (René, 10 nov 2026). Bij elke herstart is _joker_divergence_warned leeg,
+            # dus de eerste runtime-vangnetronde (_joker_confirm_run == 1) ziet alle op
+            # dat moment al divergente actoren als 'nieuw'. Dat is geen divergentie die
+            # TIJDENS bedrijf ontstond -> log die op INFO. Alleen divergentie die later,
+            # tijdens normaal bedrijf, nieuw opkomt blijft WARNING.
+            first_runtime_cycle = not confirm_startup and self._joker_confirm_run == 1
+            log = _LOGGER.info if first_runtime_cycle else _LOGGER.warning
+            log(
+                "DIVERGENTIE (%s): %d actor(en) melden getState.isOn=true terwijl de relais-"
                 "output fysiek UIT staat -> gecorrigeerd naar UIT: %s (details op DEBUG)",
+                "eerste vangnet-cyclus na herstart" if first_runtime_cycle else "tijdens bedrijf",
                 len(newly_divergent), ", ".join(newly_divergent),
             )
 
@@ -2072,7 +2082,14 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
             if dev and dev.get("name"):
                 suffix = parts[-1].replace("_", " ").title()
                 return f"{dev['name']} {suffix}"
-        return state_name
+        # Apartment-level state (geen dev.-prefix), of een dev-state die we niet
+        # konden oplossen: gebruik een bekende vertaalsleutel/label, en val anders
+        # terug op een opgeschoonde naam (underscores -> spaties, hoofdletters).
+        # Zo toont geen enkele entiteit nog een rauwe technische sleutel of een
+        # underscore als friendly_name (René, 10 nov 2026).
+        if state_name in USER_STATE_LABELS:
+            return USER_STATE_LABELS[state_name]
+        return state_name.replace("_", " ").title()
 
     def get_device_sensor_value(self, dsuid: str, sensor_type: int) -> float | None:
         """Get a device sensor value by type."""
@@ -2295,32 +2312,31 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
             # cyclus doorzetten naar _zone_states. De lampseed komt uit
             # getLastCalledScene; na een globale "alles uit" blijft dat een preset,
             # dus na een herstart/reload stond de lamp in HA op AAN terwijl
-            # zone.N.light=inactive. Alleen bij een herkende waarde, en alleen als
-            # de stand afwijkt.
+            # zone.N.light=inactive.
+            #
+            # #57 (13 nov 2026): op sommige dSS (bv. firmware 1.19.13) is de
+            # gePOLLde momentopname van zone.N.light ONBETROUWBAAR: de dSS meldt
+            # 'inactive' terwijl de zone fysiek brandt (o.a. na callScene met
+            # force=true). Die stale inactive overschreef dan elke pollronde de
+            # juiste stand uit de zojuist aangeroepen scène, waardoor de lamp in HA
+            # ~15-25 s later op UIT sprong (en ook verkeerd UIT na (her)start).
+            # Daarom NIET meer op een gePOLLde 'inactive' naar UIT forceren. Een
+            # échte UIT-overgang (Alexa, presence 'slapen', #53) komt als live
+            # stateChange-event binnen en wordt daar als TRANSITIE afgehandeld.
+            # De positieve bevestiging 'active' blijft wel veilig: die zet alleen
+            # is_on=True zonder de scène te overschrijven en kan niets fout uitzetten.
             zl = _ZONE_LIGHT_STATE.match(name)
             if zl:
                 zl_zone = int(zl.group(1))
                 raw = s.get("value")
                 raw_str = str(raw).strip().lower()
-                if raw_str in ("2", "inactive", "off", "false"):
-                    zl_on = False
-                elif raw_str in ("1", "active", "on", "true"):
+                if raw_str in ("1", "active", "on", "true"):
                     zl_on = True
                 else:
                     zl_on = None
-                if zl_on is not None and zl_zone in self.zones:
+                if zl_on is True and zl_zone in self.zones:
                     cur = self.get_zone_state(zl_zone, GROUP_LIGHT).get("is_on")
-                    if zl_on is False and cur is not False:
-                        self.zone_on_after_scene(zl_zone, GROUP_LIGHT, SCENE_OFF)
-                        self.set_zone_state(
-                            zl_zone, GROUP_LIGHT, scene=SCENE_OFF, is_on=False
-                        )
-                        light_changed = True
-                        _LOGGER.debug(
-                            "fetch_dss_states: zone.%d.light=inactive -> licht UIT",
-                            zl_zone,
-                        )
-                    elif zl_on is True and cur is not True:
+                    if cur is not True:
                         self.set_zone_state(zl_zone, GROUP_LIGHT, is_on=True)
                         light_changed = True
                         _LOGGER.debug(
