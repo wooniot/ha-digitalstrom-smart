@@ -2312,32 +2312,31 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
             # cyclus doorzetten naar _zone_states. De lampseed komt uit
             # getLastCalledScene; na een globale "alles uit" blijft dat een preset,
             # dus na een herstart/reload stond de lamp in HA op AAN terwijl
-            # zone.N.light=inactive. Alleen bij een herkende waarde, en alleen als
-            # de stand afwijkt.
+            # zone.N.light=inactive.
+            #
+            # #57 (13 nov 2026): op sommige dSS (bv. firmware 1.19.13) is de
+            # gePOLLde momentopname van zone.N.light ONBETROUWBAAR: de dSS meldt
+            # 'inactive' terwijl de zone fysiek brandt (o.a. na callScene met
+            # force=true). Die stale inactive overschreef dan elke pollronde de
+            # juiste stand uit de zojuist aangeroepen scène, waardoor de lamp in HA
+            # ~15-25 s later op UIT sprong (en ook verkeerd UIT na (her)start).
+            # Daarom NIET meer op een gePOLLde 'inactive' naar UIT forceren. Een
+            # échte UIT-overgang (Alexa, presence 'slapen', #53) komt als live
+            # stateChange-event binnen en wordt daar als TRANSITIE afgehandeld.
+            # De positieve bevestiging 'active' blijft wel veilig: die zet alleen
+            # is_on=True zonder de scène te overschrijven en kan niets fout uitzetten.
             zl = _ZONE_LIGHT_STATE.match(name)
             if zl:
                 zl_zone = int(zl.group(1))
                 raw = s.get("value")
                 raw_str = str(raw).strip().lower()
-                if raw_str in ("2", "inactive", "off", "false"):
-                    zl_on = False
-                elif raw_str in ("1", "active", "on", "true"):
+                if raw_str in ("1", "active", "on", "true"):
                     zl_on = True
                 else:
                     zl_on = None
-                if zl_on is not None and zl_zone in self.zones:
+                if zl_on is True and zl_zone in self.zones:
                     cur = self.get_zone_state(zl_zone, GROUP_LIGHT).get("is_on")
-                    if zl_on is False and cur is not False:
-                        self.zone_on_after_scene(zl_zone, GROUP_LIGHT, SCENE_OFF)
-                        self.set_zone_state(
-                            zl_zone, GROUP_LIGHT, scene=SCENE_OFF, is_on=False
-                        )
-                        light_changed = True
-                        _LOGGER.debug(
-                            "fetch_dss_states: zone.%d.light=inactive -> licht UIT",
-                            zl_zone,
-                        )
-                    elif zl_on is True and cur is not True:
+                    if cur is not True:
                         self.set_zone_state(zl_zone, GROUP_LIGHT, is_on=True)
                         light_changed = True
                         _LOGGER.debug(
