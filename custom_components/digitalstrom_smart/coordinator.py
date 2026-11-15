@@ -3195,16 +3195,7 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
             if m:
                 zl_zone = int(m.group(1))
                 zl_str = str(state_value).lower()
-                if zl_str in ("inactive", "2") and (
-                    (zl_zone, GROUP_LIGHT) in self._zone_value_on
-                ):
-                    # HA switched this zone on with setValue; the dSS does not
-                    # update zone.N.light for setValue, so 'inactive' is stale.
-                    _LOGGER.debug(
-                        "zone.%d.light=inactive ignored: zone %d was switched on "
-                        "by setValue", zl_zone, zl_zone,
-                    )
-                elif zl_str in ("inactive", "2"):
+                if zl_str in ("inactive", "2"):
                     # zelfde pad als callScene scene 0: wis ook de area-tracking
                     self.zone_on_after_scene(zl_zone, GROUP_LIGHT, SCENE_OFF)
                     self.set_zone_state(

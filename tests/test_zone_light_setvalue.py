@@ -3,10 +3,11 @@
 
 Since v4.2.6 the coordinator copies the dSS state zone.N.light into the light's
 is_on (stateChange event and every /usr/states poll). The dSS derives that state
-from scene calls only; zone/setValue changes the output but leaves zone.N.light
-at its previous value. So light.turn_on with a brightness on a zone that was off
-turned the lamp on physically, HA showed 'on', and the next zone.N.light=inactive
-(poll, ~30 s; or a stateChange) switched HA back to 'off' while the lamp stayed on.
+from scene calls only; zone/setValue changes the output but sends no event and
+leaves zone.N.light at its previous value (captured on a dSS 1.19.13 with dSM12).
+So light.turn_on with a brightness on a zone that was off turned the lamp on, HA
+showed 'on', and the next /usr/states poll (main cycle, <= 30 s) read
+zone.N.light=inactive and switched HA back to 'off' while the lamp stayed on.
 
 Like test_integration_version.py this runs without Home Assistant: it takes the
 SOURCE of the real methods from coordinator.py and light.py and runs them on
@@ -176,12 +177,23 @@ def test_brightness_on_survives_stale_poll():
     assert is_on(coord) is True, "stale zone.N.light=inactive switched the HA light off"
 
 
-def test_brightness_on_survives_stale_state_event():
+def test_brightness_on_survives_repeated_polls():
     coord = make_coordinator(); light = make_light(coord)
     zone_off(coord, light)
     asyncio.run(light.async_turn_on(brightness=128))
+    for _ in range(3):
+        poll(coord, 2)
+    assert is_on(coord) is True, "stale zone.N.light=inactive switched the HA light off"
+
+
+def test_active_event_then_inactive_event_is_off():
+    """After setValue: dSS reports active (scene elsewhere), then inactive -> genuine off."""
+    coord = make_coordinator(); light = make_light(coord)
+    zone_off(coord, light)
+    asyncio.run(light.async_turn_on(brightness=128))
+    light_state_event(coord, "active")
     light_state_event(coord, "inactive")
-    assert is_on(coord) is True, "stale zone.N.light=inactive event switched the HA light off"
+    assert is_on(coord) is False
 
 
 # --- what must keep working ----------------------------------------------------
