@@ -182,6 +182,13 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
         # (1-4) zet maar één area uit -> de zone is pas echt uit als alle areas uit zijn.
         self._zone_areas_on: dict[tuple[int, int], set[int]] = {}
         self._zone_broadcast_on: dict[tuple[int, int], bool] = {}
+        # Zones whose light HA switched on with zone/setValue (brightness), i.e.
+        # without a scene. The dSS derives zone.N.light from scene calls only, so
+        # after a setValue it keeps reporting the previous state (inactive). While
+        # a zone is in this set, zone.N.light=inactive must not switch the HA
+        # light off. Cleared by the next scene event for the zone, by any
+        # apartment scene, and by zone.N.light=active (dSS back in step).
+        self._zone_value_on: set[tuple[int, int]] = set()
 
         # Sensor data
         self._consumption: int = 0
@@ -2117,6 +2124,21 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
             self._zone_states[key] = {"scene": None, "value": None}
         self._zone_states[key].update(kwargs)
 
+    def note_zone_set_value(self, zone_id: int, group: int, value: int) -> None:
+        """Record that HA set the zone output with setValue (no scene call).
+
+        value > 0 marks the zone as 'on by value', so a stale zone.N.light=inactive
+        does not switch the HA light back off; value 0 removes the mark."""
+        key = (zone_id, group)
+        if value > 0:
+            self._zone_value_on.add(key)
+        else:
+            self._zone_value_on.discard(key)
+
+    def clear_zone_set_value(self, zone_id: int, group: int) -> None:
+        """A scene was called for the zone: zone.N.light is authoritative again."""
+        self._zone_value_on.discard((zone_id, group))
+
     def get_device_on_state(self, dsuid: str) -> bool | None:
         """Get individual device OUTPUT on/off state (Joker-actor switch)."""
         return self._device_on_states.get(dsuid)
@@ -2310,7 +2332,21 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
                     zl_on = None
                 if zl_on is not None and zl_zone in self.zones:
                     cur = self.get_zone_state(zl_zone, GROUP_LIGHT).get("is_on")
-                    if zl_on is False and cur is not False:
+                    if zl_on is True:
+                        # dSS back in step with the output (scene called)
+                        self.clear_zone_set_value(zl_zone, GROUP_LIGHT)
+                    if (
+                        zl_on is False
+                        and (zl_zone, GROUP_LIGHT) in self._zone_value_on
+                    ):
+                        # HA switched the zone on with setValue; zone.N.light
+                        # only follows scene calls, so 'inactive' is stale here.
+                        if cur is not False:
+                            _LOGGER.debug(
+                                "fetch_dss_states: zone.%d.light=inactive ignored "
+                                "(switched on by setValue)", zl_zone,
+                            )
+                    elif zl_on is False and cur is not False:
                         self.zone_on_after_scene(zl_zone, GROUP_LIGHT, SCENE_OFF)
                         self.set_zone_state(
                             zl_zone, GROUP_LIGHT, scene=SCENE_OFF, is_on=False
@@ -2972,6 +3008,10 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
 
             # Apartment-level scenes (zone 0)
             if zone_id == 0:
+                # An apartment scene (e.g. a global "all off") can switch every
+                # zone without a per-zone callScene. Drop all setValue marks so the
+                # next zone.N.light (event or /usr/states poll) is applied again.
+                self._zone_value_on.clear()
                 if name == "callScene":
                     if scene in PRESENCE_SCENE_NUMBERS:
                         self._apartment_presence = scene
@@ -3003,6 +3043,9 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
                 return
 
             if zone_id > 0:
+                # A scene for this zone puts zone.N.light back in step with the
+                # output, so a previous HA setValue no longer needs protecting.
+                self.clear_zone_set_value(zone_id, group)
                 if name == "callScene":
                     is_on = self.zone_on_after_scene(zone_id, group, scene)
                 else:  # undoScene = terug naar vorige stand -> behandel als aan
@@ -3164,6 +3207,7 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
                     self.async_update_listeners()
                 elif zl_str in ("active", "1"):
                     # scène niet overschrijven; die komt via de callScene van de zone
+                    self.clear_zone_set_value(zl_zone, GROUP_LIGHT)
                     self.set_zone_state(zl_zone, GROUP_LIGHT, is_on=True)
                     _LOGGER.debug(
                         "zone.%d.light=active: zone %d licht AAN", zl_zone, zl_zone

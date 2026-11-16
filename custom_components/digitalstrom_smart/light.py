@@ -97,6 +97,12 @@ class DigitalStromLight(CoordinatorEntity, LightEntity):
             await self.coordinator.api.set_value(
                 self._zone_id, GROUP_LIGHT, brightness
             )
+            # setValue does not update the dSS state zone.N.light (it only
+            # follows scene calls); tell the coordinator so a stale 'inactive'
+            # does not switch this light back off in HA.
+            self.coordinator.note_zone_set_value(
+                self._zone_id, GROUP_LIGHT, brightness
+            )
             self.coordinator.set_zone_state(
                 self._zone_id, GROUP_LIGHT, is_on=brightness > 0, value=brightness
             )
@@ -104,6 +110,7 @@ class DigitalStromLight(CoordinatorEntity, LightEntity):
             await self.coordinator.api.call_scene(
                 self._zone_id, GROUP_LIGHT, SCENE_MAX
             )
+            self.coordinator.clear_zone_set_value(self._zone_id, GROUP_LIGHT)
             self.coordinator.set_zone_state(
                 self._zone_id, GROUP_LIGHT, is_on=True, value=255
             )
@@ -113,6 +120,7 @@ class DigitalStromLight(CoordinatorEntity, LightEntity):
         await self.coordinator.api.call_scene(
             self._zone_id, GROUP_LIGHT, SCENE_OFF
         )
+        self.coordinator.clear_zone_set_value(self._zone_id, GROUP_LIGHT)
         self.coordinator.set_zone_state(
             self._zone_id, GROUP_LIGHT, is_on=False, value=0
         )
