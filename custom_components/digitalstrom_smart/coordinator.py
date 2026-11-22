@@ -300,6 +300,7 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
         self._parse_structure(structure)
         self._telemetry_sent = False
         self._telemetry_last: float = 0  # timestamp of last successful ping
+        self._nudge_shown: str = ""  # nudge type shown this session
 
         # Scene discovery data
         # Key: (zone_id, group, scene_nr) -> str (user-defined name)
@@ -3581,6 +3582,21 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
                     ) as resp:
                         if resp.status == 200:
                             _LOGGER.debug("Telemetry ping sent successfully")
+                            try:
+                                data = await resp.json(content_type=None)
+                                nudge = data.get("nudge") if isinstance(data, dict) else None
+                                if nudge and isinstance(nudge, dict):
+                                    ntype = nudge.get("type", "")
+                                    if ntype and ntype != self._nudge_shown:
+                                        self._nudge_shown = ntype
+                                        from homeassistant.components.persistent_notification import async_create as _pn_create
+                                        title = nudge.get("title", "Digital Strom Smart")
+                                        body = nudge.get("body", "")
+                                        url = nudge.get("url", "")
+                                        msg = f"{body}\n\n[{url}]({url})" if url else body
+                                        _pn_create(self.hass, msg, title=title, notification_id=f"ds_nudge_{ntype}")
+                            except Exception as err:
+                                _LOGGER.debug("Telemetry nudge parse failed: %s", err)
                             return
                         _LOGGER.debug("Telemetry ping HTTP %d", resp.status)
             except Exception as err:
