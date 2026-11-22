@@ -249,6 +249,18 @@ Home Assistant gebruikt automatisch de juiste taal op basis van je systeemtaal. 
 
 ## Wijzigingslog
 
+### v4.2.9 (2026-11-22) — Lichtpoll-fix: inactive-status van poll zet lampen niet meer uit
+
+- **Zonelichten schieten niet meer terug naar uit na een sceneanroep.** Op sommige installaties met firmware 1.19.13 en `callScene(force=true)` rapporteert de dSS `zone.N.light=inactive` terwijl de zone fysiek brandt. De integratie negeert nu `inactive` vanuit de `/usr/states`-poll volledig -- alleen de positieve `active`-bevestiging wordt nog doorgezet. Echte uit-overgangen komen altijd als live stateChange-event binnen en zijn niet geraakt. Dit herstelt het gedrag van v4.2.7-beta2 dat per abuis niet in de stabiele releases terechtgekomen was (issue #63, regressie vanuit v4.2.6).
+
+### v4.2.8 (2026-11-22) — Upgrade-melding in Home Assistant
+
+- **In-HA-melding voor niet-gelicentieerde gebruikers.** Gebruikers zonder Pro-licentiesleutel zien nu een persistente melding in Home Assistant (Instellingen > Meldingen) die verwijst naar wooniot.nl/pro. De melding verschijnt eenmalig per sessie en alleen wanneer de server een hint teruggeeft -- bestaande gelicentieerde gebruikers zijn niet geraakt.
+
+### v4.2.7 (2026-11-19) — Lichterhelderheidsfix bij zonelichten
+
+- **Zonelichten schieten niet meer terug naar uit na een helderheidscommando.** Wanneer een zonelight werd ingeschakeld via een helderheidsschuifregelaar, keerde de status kort terug naar "uit" voordat de volgende pollcyclus hem corrigeerde. De status wordt nu direct vanuit het `turn_on`-aanroep gezet. Fix van Kay Moosmann (PR #60).
+
 ### v4.2.6 (2026-11-10) — Lampen na "alles uit", stabiele user states, klaar voor HA 2026.11
 
 - **Lampen volgen een globale "alles uit".** Een "alles uit" vanuit de dSS-app, Alexa of een aanwezigheidsscène liet lampen in Home Assistant op aan staan. De lichtstatus per kamer werkt nu de lampentiteit bij, live en na een herstart of reload (issue #53).

@@ -241,6 +241,10 @@ Home Assistant verwendet automatisch die richtige Sprache basierend auf Ihrer Sy
 
 ## Änderungsprotokoll
 
+### v4.2.9 (2026-11-22) — Licht-Poll-Fix: Inaktiv-Status aus Poll schaltet Lichter nicht mehr aus
+
+- **Zonenlichter schalten nach einem Szenenaufruf nicht mehr auf Aus.** Bei einigen Installationen mit Firmware 1.19.13 und `callScene(force=true)` meldet die dSS `zone.N.light=inactive`, obwohl die Zone physisch leuchtet. Die Integration ignoriert jetzt `inactive` aus dem `/usr/states`-Poll vollstaendig -- nur die positive `active`-Bestaetigung wird noch weitergegeben. Echte Aus-Uebergaenge kommen immer als Live-`stateChange`-Event und sind nicht betroffen. Dies stellt das Verhalten von v4.2.7-beta2 wieder her, das versehentlich nicht in die stabilen Releases aufgenommen wurde (Issue #63, Regression seit v4.2.6).
+
 ### v4.2.8 (2026-11-22) — Upgrade-Hinweis in Home Assistant
 
 - **In-HA-Benachrichtigung für nicht lizenzierte Benutzer.** Benutzer ohne Pro-Lizenzschluessel sehen jetzt eine persistente Benachrichtigung in Home Assistant (Einstellungen > Benachrichtigungen), die auf wooniot.nl/pro verweist. Die Benachrichtigung erscheint einmal pro Sitzung und nur wenn der Server einen Hinweis zurückgibt — bestehende lizenzierte Benutzer sind nicht betroffen.

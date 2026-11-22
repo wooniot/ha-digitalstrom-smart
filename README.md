@@ -255,6 +255,10 @@ Home Assistant automatically uses the correct language based on your system lang
 
 ## Changelog
 
+### v4.2.9 (2026-11-22) — Light poll fix: inactive from poll no longer forces lights off
+
+- **Zone lights no longer flip back to off after a scene call.** On some installations with firmware 1.19.13 and `callScene(force=true)`, the dSS reports `zone.N.light=inactive` while the zone is physically on. The integration now ignores `inactive` from the `/usr/states` poll entirely; only the positive `active` confirmation is recorded. Real off-transitions always arrive as live `stateChange` events and are not affected. This restores the behaviour from v4.2.7-beta2 that was accidentally left out of the stable releases (issue #63, regression since v4.2.6).
+
 ### v4.2.8 (2026-11-22) — Upgrade nudge in Home Assistant
 
 - **In-HA upgrade prompt for unlicensed users.** Users without a Pro license key now see a persistent notification in Home Assistant (Settings > Notifications) pointing them to wooniot.nl/pro. The notification appears once per session and only when the server returns a nudge — existing licensed users are unaffected.
