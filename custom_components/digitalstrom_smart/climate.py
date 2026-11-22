@@ -5,6 +5,7 @@ PRO FEATURE - requires license key.
 """
 
 import logging
+import time
 from typing import Any
 
 from homeassistant.components.climate import (
@@ -140,6 +141,10 @@ class DigitalStromClimate(CoordinatorEntity, ClimateEntity):
             "manufacturer": MANUFACTURER,
             "model": "Zone",
         }
+        # Fix #61: DSS can take up to 60 s to reflect a written setpoint.
+        # Keep the user's value for up to 90 s, until DSS confirms it.
+        self._pending_temp: float | None = None
+        self._pending_temp_until: float = 0.0
 
     @property
     def native_current_temperature(self) -> float | None:
@@ -182,7 +187,18 @@ class DigitalStromClimate(CoordinatorEntity, ClimateEntity):
         if status:
             nv = status.get("NominalValue")
             if nv and nv > 0:
+                # Fix #61: if DSS has confirmed the pending value (or close enough),
+                # clear the holdoff so we stop overriding.
+                if self._pending_temp is not None and abs(nv - self._pending_temp) < 0.4:
+                    self._pending_temp = None
+                # If a user-written value is still pending (DSS not confirmed yet),
+                # return it instead of the stale DSS value.
+                if self._pending_temp is not None and time.monotonic() < self._pending_temp_until:
+                    return self._pending_temp
                 return nv
+        # No status from DSS — still prefer the pending value over None.
+        if self._pending_temp is not None and time.monotonic() < self._pending_temp_until:
+            return self._pending_temp
         return self.coordinator.get_temperature(self._zone_id)
 
     # Naam die Home Assistant < 2026.11 leest (zie _attr_native_temperature_unit).
@@ -311,7 +327,9 @@ class DigitalStromClimate(CoordinatorEntity, ClimateEntity):
             await self.coordinator.api.set_temperature_control_values(
                 self._zone_id, temp, mode_param
             )
-            # Update local state
+            # Fix #61: hold the written value for 90 s while DSS propagates the change.
+            self._pending_temp = temp
+            self._pending_temp_until = time.monotonic() + 90.0
             if status:
                 status["NominalValue"] = temp
             self.async_write_ha_state()

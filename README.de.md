@@ -241,6 +241,10 @@ Home Assistant verwendet automatisch die richtige Sprache basierend auf Ihrer Sy
 
 ## Änderungsprotokoll
 
+### v4.2.10 (2026-11-22) — Thermostat-Sollwert kehrt nach 1–2 Minuten nicht mehr zurück
+
+- **Fix #61: Zieltemperatur bleibt auf dem eingestellten Wert.** Nach dem Schreiben eines neuen Sollwerts in Home Assistant kehrte der Temperaturschieberegler innerhalb von 1–2 Minuten auf den alten Wert zurück. Ursache: Der Coordinator ersetzt das komplette Klimastatus-Dict bei jedem Poll, und der DSS kann bis zu ~60 s benötigen, um den neuen Comfort-Sollwert in `NominalValue` zu spiegeln. Die Climate-Entität hält den geschriebenen Wert jetzt bis zu 90 Sekunden und löscht die Sperre, sobald der DSS den neuen Wert bestätigt (innerhalb von 0,4 °C).
+
 ### v4.2.9 (2026-11-22) — Licht-Poll-Fix: Inaktiv-Status aus Poll schaltet Lichter nicht mehr aus
 
 - **Zonenlichter schalten nach einem Szenenaufruf nicht mehr auf Aus.** Bei einigen Installationen mit Firmware 1.19.13 und `callScene(force=true)` meldet die dSS `zone.N.light=inactive`, obwohl die Zone physisch leuchtet. Die Integration ignoriert jetzt `inactive` aus dem `/usr/states`-Poll vollstaendig -- nur die positive `active`-Bestaetigung wird noch weitergegeben. Echte Aus-Uebergaenge kommen immer als Live-`stateChange`-Event und sind nicht betroffen. Dies stellt das Verhalten von v4.2.7-beta2 wieder her, das versehentlich nicht in die stabilen Releases aufgenommen wurde (Issue #63, Regression seit v4.2.6).

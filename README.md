@@ -255,6 +255,10 @@ Home Assistant automatically uses the correct language based on your system lang
 
 ## Changelog
 
+### v4.2.10 (2026-11-22) — Thermostat setpoint no longer reverts after 1–2 minutes
+
+- **Fix #61: target temperature stays at the value you set.** After writing a new setpoint in Home Assistant, the temperature slider was reverting to the old value within 1–2 minutes. Root cause: the coordinator replaces the full climate-status dict on each poll, and DSS can take up to ~60 s to reflect the new Comfort setpoint in `NominalValue`. The climate entity now holds the written value for up to 90 seconds and clears the hold as soon as DSS confirms the new value (within 0.4 °C), so the display is always accurate whether the write was fast or slow.
+
 ### v4.2.9 (2026-11-22) — Light poll fix: inactive from poll no longer forces lights off
 
 - **Zone lights no longer flip back to off after a scene call.** On some installations with firmware 1.19.13 and `callScene(force=true)`, the dSS reports `zone.N.light=inactive` while the zone is physically on. The integration now ignores `inactive` from the `/usr/states` poll entirely; only the positive `active` confirmation is recorded. Real off-transitions always arrive as live `stateChange` events and are not affected. This restores the behaviour from v4.2.7-beta2 that was accidentally left out of the stable releases (issue #63, regression since v4.2.6).

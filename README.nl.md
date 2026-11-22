@@ -249,6 +249,10 @@ Home Assistant gebruikt automatisch de juiste taal op basis van je systeemtaal. 
 
 ## Wijzigingslog
 
+### v4.2.10 (2026-11-22) — Thermostaatinstelpunt keert niet meer terug na 1–2 minuten
+
+- **Fix #61: doeltemperatuur blijft op de ingestelde waarde.** Na het schrijven van een nieuwe instelwaarde in Home Assistant keerde de temperatuurschuif binnen 1–2 minuten terug naar de oude waarde. Oorzaak: de coordinator vervangt de volledige climate-status-dict bij elke poll, en de DSS kan tot ~60 s nodig hebben om de nieuwe Comfort-instelwaarde in `NominalValue` te spiegelen. De climate-entiteit houdt de geschreven waarde nu tot 90 seconden vast en verwijdert de blokkade zodra de DSS de nieuwe waarde bevestigt (binnen 0,4 °C).
+
 ### v4.2.9 (2026-11-22) — Lichtpoll-fix: inactive-status van poll zet lampen niet meer uit
 
 - **Zonelichten schieten niet meer terug naar uit na een sceneanroep.** Op sommige installaties met firmware 1.19.13 en `callScene(force=true)` rapporteert de dSS `zone.N.light=inactive` terwijl de zone fysiek brandt. De integratie negeert nu `inactive` vanuit de `/usr/states`-poll volledig -- alleen de positieve `active`-bevestiging wordt nog doorgezet. Echte uit-overgangen komen altijd als live stateChange-event binnen en zijn niet geraakt. Dit herstelt het gedrag van v4.2.7-beta2 dat per abuis niet in de stabiele releases terechtgekomen was (issue #63, regressie vanuit v4.2.6).
