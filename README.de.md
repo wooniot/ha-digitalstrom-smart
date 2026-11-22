@@ -241,6 +241,14 @@ Home Assistant verwendet automatisch die richtige Sprache basierend auf Ihrer Sy
 
 ## Änderungsprotokoll
 
+### v4.2.8 (2026-11-22) — Upgrade-Hinweis in Home Assistant
+
+- **In-HA-Benachrichtigung für nicht lizenzierte Benutzer.** Benutzer ohne Pro-Lizenzschluessel sehen jetzt eine persistente Benachrichtigung in Home Assistant (Einstellungen > Benachrichtigungen), die auf wooniot.nl/pro verweist. Die Benachrichtigung erscheint einmal pro Sitzung und nur wenn der Server einen Hinweis zurückgibt — bestehende lizenzierte Benutzer sind nicht betroffen.
+
+### v4.2.7 (2026-11-19) — Zonenbeleuchtung Helligkeitsfix
+
+- **Zonenlichter schalten nach einem Helligkeitsbefehl nicht mehr auf Aus.** Wenn ein Zonenlicht ueber den Helligkeitsregler eingeschaltet wurde, kehrte der Status kurz auf "Aus" zurueck, bevor der naechste Zyklus ihn korrigierte. Der Status wird jetzt direkt aus dem `turn_on`-Aufruf gesetzt. Fix von Kay Moosmann (PR #60).
+
 ### v4.2.6 (2026-11-10) — Licht nach „Alles aus", stabile User States, bereit für HA 2026.11
 
 - **Licht folgt einem globalen „Alles aus".** Ein „Alles aus" aus der dSS-App, über Alexa oder eine Anwesenheitsszene ließ Lichter in Home Assistant eingeschaltet. Der Lichtzustand pro Raum aktualisiert jetzt die Licht-Entität, live und nach einem Neustart oder Reload (Issue #53).

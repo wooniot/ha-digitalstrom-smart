@@ -255,6 +255,14 @@ Home Assistant automatically uses the correct language based on your system lang
 
 ## Changelog
 
+### v4.2.8 (2026-11-22) — Upgrade nudge in Home Assistant
+
+- **In-HA upgrade prompt for unlicensed users.** Users without a Pro license key now see a persistent notification in Home Assistant (Settings > Notifications) pointing them to wooniot.nl/pro. The notification appears once per session and only when the server returns a nudge — existing licensed users are unaffected.
+
+### v4.2.7 (2026-11-19) — Zone light brightness fix
+
+- **Zone lights no longer flip back to off after a brightness command.** When a zone light was switched on via a brightness slider, the state briefly returned to "off" in HA before the next poll corrected it. The state is now set directly from the `turn_on` call, matching how individual device lights work. Fix contributed by Kay Moosmann (PR #60).
+
 ### v4.2.6 (2026-11-10) — Lights after "all off", stable user states, ready for HA 2026.11
 
 - **Lights follow a global "all off".** An "all off" from the dSS app, Alexa or a presence scene left lights on in Home Assistant. The per-room light state now updates the light entity, live and after a restart or reload (issue #53).
