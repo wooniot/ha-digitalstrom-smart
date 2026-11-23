@@ -52,6 +52,8 @@ Unlike traditional per-device polling integrations, Digital Strom Smart uses the
 
 Unlock advanced features with a Pro license key from [wooniot.nl/pro](https://wooniot.nl/pro):
 
+- **Apple Home in one step** — the `setup_apple_home` service creates one tidy HomeKit Bridge: one light per room (on/off/dim), the **mood switches** and the room thermostats. No flood of scene buttons in the Home app; run it again after changes, no new pairing
+- **Mood switches** — every scene you gave a name in the dS Configurator (e.g. "Cosy", "Evening") becomes a switch per room that stays **on while that scene is active** (also when called from a wall button). Made for Apple Home and Siri, where a plain scene is a button without state
 - **Climate control** — target temperature, preset modes (Comfort, Economy, Night, Holiday), heating + cooling detection
 - **Joker actuator switches (SW-KL and other SW-* actuators)** — individual on/off control per Joker actuator, with reliable output status after a restart (live per-device query)
 - **Home ventilation (SW-UMR200)** — automatic detection of ventilation units on dS group 64, with on/off status and level (%) per output, and control
@@ -190,6 +192,7 @@ Other Pro entities (requires license):
 | `digitalstrom_smart.call_scene` | Activate a scene (zone_id, group, scene_number) | |
 | `digitalstrom_smart.blink_device` | Blink a device for identification (dsuid) | Yes |
 | `digitalstrom_smart.save_scene` | Save current output values as a scene | Yes |
+| `digitalstrom_smart.setup_apple_home` | Create/update one HomeKit Bridge for Apple Home with room lights, mood switches and thermostats (options: include_moods, include_thermostats). The first run shows the pairing QR code as a notification. Assign rooms in the Home app afterwards | Yes |
 
 ## Climate notes
 
@@ -254,6 +257,12 @@ Digital Strom Smart supports multiple languages for all entity names, configurat
 Home Assistant automatically uses the correct language based on your system language setting. Want to add a translation? PRs welcome — just create a new JSON file in `custom_components/digitalstrom_smart/translations/`.
 
 ## Changelog
+
+### v4.3.0-beta1 (2026-11-23) — Apple Home: room lights, mood switches, one-step setup
+
+- **Pro: mood switches per room.** Named light scenes become switches with real state: on while the scene is active, off switches the room light off. Generic presets and off scenes get no switch, so Apple Home stays clear.
+- **Pro: `setup_apple_home` service.** Creates or updates a single HomeKit Bridge with only the room lights, mood switches and thermostats, through Home Assistant's own HomeKit flows.
+- **License:** the offline fallback now uses the last successful online check (max 30 days) instead of a key check in the client.
 
 ### v4.2.10 (2026-11-22) — Thermostat setpoint no longer reverts after 1–2 minutes
 

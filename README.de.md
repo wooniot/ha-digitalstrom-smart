@@ -51,6 +51,8 @@ Im Gegensatz zu herkömmlichen Integrationen, die jedes Gerät einzeln abfragen,
 
 Erweiterte Funktionen mit einem Pro-Lizenzschlüssel von [wooniot.nl/pro](https://wooniot.nl/pro):
 
+- **Apple Home in einem Schritt** — der Dienst `setup_apple_home` erstellt eine übersichtliche HomeKit Bridge: pro Raum ein Licht (ein/aus/dimmen), die **Stimmungsschalter** und die Raumthermostate. Keine Flut von Szenen-Tasten in der Home-App; nach Änderungen erneut ausführen, ohne neue Kopplung
+- **Stimmungsschalter** — jede im dS Configurator benannte Szene (z. B. "Gemütlich", "Abend") wird pro Raum ein Schalter, der **eingeschaltet bleibt, solange die Szene aktiv ist** (auch nach einem Wandtaster). Gemacht für Apple Home und Siri, wo eine normale Szene eine Taste ohne Zustand ist
 - **Klimasteuerung** — Zieltemperatur, Voreinstellungen (Komfort, Sparen, Nacht, Urlaub), Heiz- und Kühlerkennung
 - **Anwesenheitsmodus** — Anwesenheitsstatus der Wohnung lesen und setzen (Anwesend, Abwesend, Schlafen, …) als Select-Entität
 - **Benutzerdefinierte Aktionen** — im dSS Konfigurator angelegte Aktionen erscheinen als Home-Assistant-**Buttons**
@@ -181,6 +183,7 @@ Weitere Pro-Entitäten (Lizenz erforderlich):
 | `digitalstrom_smart.call_scene` | Szene aktivieren (zone_id, group, scene_number) | |
 | `digitalstrom_smart.blink_device` | Gerät blinken lassen zur Identifikation (dsuid) | Ja |
 | `digitalstrom_smart.save_scene` | Aktuelle Ausgabewerte als Szene speichern | Ja |
+| `digitalstrom_smart.setup_apple_home` | Eine HomeKit Bridge für Apple Home mit Raumlichtern, Stimmungsschaltern und Thermostaten erstellen/aktualisieren (Optionen: include_moods, include_thermostats). Beim ersten Mal erscheint der Kopplungs-QR-Code als Benachrichtigung. Räume danach in der Home-App zuweisen | Ja |
 
 ## Hinweise zur Klimasteuerung
 

@@ -50,8 +50,7 @@ async def check_pro_license(key: str, dss_id: str, hass: HomeAssistant | None = 
     except Exception:
         pass
     # Offline fallback: the last successful ONLINE result for this key, at most
-    # OFFLINE_GRACE_DAYS old. No signing secret in the client (nov 2026): a secret
-    # in published code lets anyone forge keys once the server is unreachable.
+    # OFFLINE_GRACE_DAYS old; the license server stays the single source of truth.
     cached = await _cache_load(hass, key) if hass is not None else None
     valid = bool(cached and cached.get("valid"))
     return {

@@ -51,6 +51,8 @@ Anders dan traditionele integraties die per apparaat pollen, gebruikt Digital St
 
 Ontgrendel geavanceerde functies met een Pro-licentiesleutel van [wooniot.nl/pro](https://wooniot.nl/pro):
 
+- **Apple Woning in één stap** — de dienst `setup_apple_home` maakt één overzichtelijke HomeKit Bridge: per kamer één lamp (aan/uit/dimmen), de **sfeerschakelaars** en de thermostaten. Geen stortvloed aan scèneknoppen in de Woning-app; opnieuw draaien na wijzigingen, zonder opnieuw te koppelen
+- **Sfeerschakelaars** — elke scène die in de dS Configurator een naam heeft (bijv. "Gezellig", "Avond") wordt per kamer een schakelaar die **aan blijft zolang die scène actief is** (ook na een wandknop). Gemaakt voor Apple Woning en Siri, waar een gewone scène een knop zonder stand is
 - **Klimaatregeling** — streeftemperatuur, voorinstellingen (Comfort, Spaarstand, Nacht, Vakantie), detectie van verwarmen + koelen
 - **Aanwezigheidsmodus** — de aanwezigheidsstatus van de woning lezen en instellen (Aanwezig, Afwezig, Slapen, …) als select-entiteit
 - **Gebruikersgedefinieerde acties** — acties uit de dSS Configurator verschijnen als Home Assistant-**knoppen**
@@ -184,6 +186,7 @@ Overige Pro-entiteiten (licentie vereist):
 | `digitalstrom_smart.call_scene` | Een scene activeren (zone_id, group, scene_number) | |
 | `digitalstrom_smart.blink_device` | Een apparaat laten knipperen ter identificatie (dsuid) | Ja |
 | `digitalstrom_smart.save_scene` | Huidige uitgangswaarden opslaan als scene | Ja |
+| `digitalstrom_smart.setup_apple_home` | Eén HomeKit Bridge voor Apple Woning maken/bijwerken met kamerlampen, sfeerschakelaars en thermostaten (opties: include_moods, include_thermostats). De eerste keer verschijnt de koppel-QR-code als melding. Kamers daarna indelen in de Woning-app | Ja |
 
 ## Klimaatnotities
 
