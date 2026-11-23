@@ -412,6 +412,34 @@ def _register_services(hass: HomeAssistant) -> None:
             except DigitalStromApiError as err:
                 _LOGGER.error("save_scene failed: %s", err)
 
+    async def handle_setup_apple_home(call: ServiceCall) -> dict:
+        """Create/update one tidy HomeKit Bridge for Apple Home. PRO."""
+        from homeassistant.exceptions import HomeAssistantError
+        from .apple_home import async_setup_apple_home
+
+        pro_ids = [
+            entry_id for entry_id, d in hass.data[DOMAIN].items()
+            if d["coordinator"].pro_enabled
+        ]
+        if not pro_ids:
+            raise HomeAssistantError("Apple Home setup requires a Pro license")
+        try:
+            return await async_setup_apple_home(
+                hass,
+                pro_ids,
+                include_climate=call.data.get("include_thermostats", True),
+                include_moods=call.data.get("include_moods", True),
+            )
+        except RuntimeError as err:
+            raise HomeAssistantError(str(err)) from err
+
+    if not hass.services.has_service(DOMAIN, "setup_apple_home"):
+        from homeassistant.core import SupportsResponse
+        hass.services.async_register(
+            DOMAIN, "setup_apple_home", handle_setup_apple_home,
+            supports_response=SupportsResponse.OPTIONAL,
+        )
+
     if not hass.services.has_service(DOMAIN, "call_scene"):
         hass.services.async_register(DOMAIN, "call_scene", handle_call_scene)
         hass.services.async_register(DOMAIN, "blink_device", handle_blink)

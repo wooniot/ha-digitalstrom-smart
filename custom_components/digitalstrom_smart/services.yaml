@@ -82,3 +82,25 @@ save_scene:
           min: 0
           max: 127
           mode: box
+
+setup_apple_home:
+  name: Set up Apple Home (Pro)
+  description: >-
+    Creates one HomeKit Bridge with only the useful Digital Strom entities for
+    the Apple Home app: one light per room (on/off/dim), the mood switches
+    (named scenes that stay on while active) and the room thermostats. Run it
+    again after adding rooms or scenes; the same bridge is updated, no new
+    pairing. The first run shows the pairing QR code as a notification.
+  fields:
+    include_moods:
+      name: Mood switches
+      description: Add the named scenes per room as switches.
+      default: true
+      selector:
+        boolean:
+    include_thermostats:
+      name: Thermostats
+      description: Add the room thermostats.
+      default: true
+      selector:
+        boolean:

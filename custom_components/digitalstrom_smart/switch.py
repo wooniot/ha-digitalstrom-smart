@@ -10,10 +10,15 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .api import DigitalStromApiError
+from .const import GROUP_LIGHT, SCENE_OFF, SCENE_DEEP_OFF, AREA_OFF_SCENES
 from .const import DOMAIN, MANUFACTURER, GROUP_JOKER, CONF_ENABLED_ZONES, APARTMENT_ALARM_SCENES, ALARM_TRANSLATION_KEYS, SCENE_DOOR_BELL, APARTMENT_TRIGGER_SCENES
 from .coordinator import DigitalStromCoordinator
 
 _LOGGER = logging.getLogger(__name__)
+
+
+# Off-type light scenes never get a mood switch: off is the zone light's job.
+MOOD_EXCLUDED_SCENES = {SCENE_OFF, SCENE_DEEP_OFF, *AREA_OFF_SCENES}
 
 
 async def async_setup_entry(
@@ -60,6 +65,28 @@ async def async_setup_entry(
         entities.append(
             DigitalStromSystemTriggerSwitch(coordinator, state_id, cfg)
         )
+
+    # --- PRO: mood switches ("sfeerschakelaars") per zone for Apple Home / voice ---
+    # A HA scene has no state, so HomeKit Bridge shows it as a button that springs
+    # back to off. A mood switch stays ON while its scene is the zone's active light
+    # scene, and turning it off switches the zone light off. To keep Apple Home tidy
+    # only scenes with a NAME given in the dS Configurator get a switch (e.g.
+    # "Gezellig", "Avond"); generic presets and off/area-off scenes do not, the zone
+    # light entity covers on/off/dim (Marijn, 23 nov 2026: "geen stortvloed aan knoppen").
+    if coordinator.pro_enabled:
+        for zone_id, zone_info in coordinator.zones.items():
+            if enabled_zones and zone_id not in enabled_zones:
+                continue
+            if GROUP_LIGHT not in zone_info["groups"]:
+                continue
+            for (z, g, nr), name in sorted(coordinator.scene_names.items()):
+                if z != zone_id or g != GROUP_LIGHT or not name:
+                    continue
+                if nr in MOOD_EXCLUDED_SCENES:
+                    continue
+                entities.append(
+                    DigitalStromMoodSwitch(coordinator, zone_id, zone_info, nr, name)
+                )
 
     # Configurator timers are exposed as run-once buttons (see button.py)
     # rather than as switches: enabling/disabling klokken stays in the dSS.
@@ -336,6 +363,92 @@ class DigitalStromJokerSwitch(CoordinatorEntity, SwitchEntity):
                 "Failed to turn off %s (%s): %s",
                 self._device_name or "switch", self._dsuid[:8], err,
             )
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        self.async_write_ha_state()
+
+
+class DigitalStromMoodSwitch(CoordinatorEntity, SwitchEntity):
+    """Pro: a named light scene of one zone as a switch with real state.
+
+    ON while this scene is the zone's last called light scene (tracked by the
+    coordinator from callScene events + getLastCalledScene). Turning it on calls
+    the scene; turning it off (only when active) calls Off for the zone light.
+    Made for Apple Home / Siri via HomeKit Bridge, where a plain HA scene is a
+    momentary button without state.
+    """
+
+    _attr_has_entity_name = True
+    _attr_icon = "mdi:lightbulb-group"
+
+    def __init__(
+        self,
+        coordinator: DigitalStromCoordinator,
+        zone_id: int,
+        zone_info: dict,
+        scene_nr: int,
+        scene_name: str,
+    ) -> None:
+        super().__init__(coordinator)
+        self._zone_id = zone_id
+        self._zone_name = zone_info["name"]
+        self._scene_nr = scene_nr
+        dss_id = coordinator.dss_id
+        self._attr_unique_id = f"ds_{dss_id}_{zone_id}_mood_{scene_nr}"
+        self._attr_name = scene_name
+        self._attr_device_info = {
+            "identifiers": {(DOMAIN, f"{dss_id}_zone_{zone_id}")},
+            "name": self._zone_name,
+            "manufacturer": MANUFACTURER,
+            "model": "Zone",
+        }
+
+    @property
+    def is_on(self) -> bool:
+        state = self.coordinator.get_zone_state(self._zone_id, GROUP_LIGHT)
+        return state.get("scene") == self._scene_nr
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        return {"scene_number": self._scene_nr}
+
+    async def async_turn_on(self, **kwargs) -> None:
+        try:
+            await self.coordinator.api.call_scene(
+                self._zone_id, GROUP_LIGHT, self._scene_nr
+            )
+        except DigitalStromApiError as err:
+            _LOGGER.error(
+                "Mood %s in zone %s failed: %s", self._scene_nr, self._zone_name, err
+            )
+            return
+        # Optimistic: the dSS callScene event confirms it moments later.
+        self.coordinator.set_zone_state(
+            self._zone_id, GROUP_LIGHT, scene=self._scene_nr,
+            is_on=self.coordinator.zone_on_after_scene(
+                self._zone_id, GROUP_LIGHT, self._scene_nr
+            ),
+        )
+        self.coordinator.async_update_listeners()
+
+    async def async_turn_off(self, **kwargs) -> None:
+        if not self.is_on:
+            return
+        try:
+            await self.coordinator.api.call_scene(
+                self._zone_id, GROUP_LIGHT, SCENE_OFF
+            )
+        except DigitalStromApiError as err:
+            _LOGGER.error("Off in zone %s failed: %s", self._zone_name, err)
+            return
+        self.coordinator.set_zone_state(
+            self._zone_id, GROUP_LIGHT, scene=SCENE_OFF,
+            is_on=self.coordinator.zone_on_after_scene(
+                self._zone_id, GROUP_LIGHT, SCENE_OFF
+            ),
+        )
+        self.coordinator.async_update_listeners()
 
     @callback
     def _handle_coordinator_update(self) -> None:
