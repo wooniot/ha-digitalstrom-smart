@@ -38,7 +38,10 @@ from .const import (
 )
 from .coordinator import DigitalStromCoordinator
 from .license import check_pro_license as _check_pro_license, sync_pro_issue
-from .user_states import cleanup_skipped_user_states
+from .user_states import (
+    cleanup_orphaned_apartment_states,
+    cleanup_skipped_user_states,
+)
 
 # Pre-import all platform modules to avoid blocking imports in event loop (HA 2026+)
 from . import (  # noqa: F401
@@ -317,6 +320,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # them and their old ds_{dss_id}_userstate_{name} entity stays orphaned. Must
     # run BEFORE the platforms are forwarded. Idempotent (René, 9 nov 2026).
     cleanup_skipped_user_states(hass, dss_id)
+    # Ook verweesde apartment-user/custom-states opruimen die de dSS niet meer
+    # levert (bv. een state die naar een echte zone-sensor verhuisde). Geguard op
+    # de live set, dus een mislukte fetch wist nooit levende entiteiten
+    # (René, 10 nov 2026).
+    cleanup_orphaned_apartment_states(hass, entry.entry_id, dss_id, coordinator)
 
     # Forward to platforms
     platforms = list(PLATFORMS_FREE)

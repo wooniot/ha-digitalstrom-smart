@@ -66,6 +66,63 @@ def cleanup_skipped_user_states(hass: HomeAssistant, dss_id: str) -> int:
     return removed
 
 
+def cleanup_orphaned_apartment_states(
+    hass: HomeAssistant, entry_id: str, dss_id: str, coordinator
+) -> int:
+    """Remove restored/orphaned apartment-level user- and custom-state entities.
+
+    A state that the dSS used to expose apartment-wide (device "Digital Strom
+    Server") but now delivers as a real zone/device sensor leaves its old
+    ``ds_{dss_id}_userstate_{name}`` / ``ds_{dss_id}_customstate_{id}`` entity
+    behind as a (restored, unavailable) orphan — e.g. René's
+    ``binary_sensor.digital_strom_server_rm_batterij_wk_0`` next to the active
+    ``binary_sensor.woonkamer_rm_batterij_wk``. Those names are no longer in the
+    live user/custom-state set, so nothing recreates them.
+
+    Sweep both platforms for this config entry: drop every userstate/customstate
+    registration whose source name/id the dSS no longer provides. GUARDED — a
+    category is only swept when its live set was actually fetched (non-empty), so
+    a transient fetch failure can never wipe live entities. Run once per setup,
+    after fetch_user_states()/fetch_custom_states() and before the platforms are
+    forwarded. (René, 10 nov 2026)
+    """
+    reg = er.async_get(hass)
+    removed = 0
+    user_prefix = f"ds_{dss_id}_userstate_"
+    custom_prefix = f"ds_{dss_id}_customstate_"
+
+    have_user = bool(coordinator.user_states)
+    have_custom = bool(coordinator.custom_states)
+    expected_user = {
+        user_state_uid(dss_id, name) for name in coordinator.user_states
+    }
+    expected_custom = {
+        f"ds_{dss_id}_customstate_{sid}" for sid in coordinator.custom_states
+    }
+
+    for ent in er.async_entries_for_config_entry(reg, entry_id):
+        uid = ent.unique_id or ""
+        if have_user and uid.startswith(user_prefix) and uid not in expected_user:
+            reg.async_remove(ent.entity_id)
+            removed += 1
+            _LOGGER.info(
+                "Removed orphaned user-state entity %s (%s no longer provided by dSS)",
+                ent.entity_id, uid,
+            )
+        elif have_custom and uid.startswith(custom_prefix) and uid not in expected_custom:
+            reg.async_remove(ent.entity_id)
+            removed += 1
+            _LOGGER.info(
+                "Removed orphaned custom-state entity %s (%s no longer provided by dSS)",
+                ent.entity_id, uid,
+            )
+    if removed:
+        _LOGGER.info(
+            "Cleaned up %d orphaned apartment-state registration(s)", removed
+        )
+    return removed
+
+
 def is_binary_value(data: dict) -> bool:
     """Return True if a dSS state behaves as binary (active/inactive, 1/2)."""
     state = str(data.get("state", "")).lower()
