@@ -205,7 +205,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             coordinator.pro_license_key = pro_key
             coordinator.entry_id = entry.entry_id
             if pro_key:
-                license_result = await _check_pro_license(pro_key, dss_id)
+                license_result = await _check_pro_license(pro_key, dss_id, hass)
                 coordinator.pro_enabled = license_result["valid"]
                 coordinator.license_info = license_result
                 if coordinator.pro_enabled:

@@ -20,7 +20,7 @@ _LOGGER = logging.getLogger(__name__)
 ISSUE_PRO_INVALID = "pro_license_invalid"
 
 
-async def check_pro_license(key: str, dss_id: str) -> dict:
+async def check_pro_license(key: str, dss_id: str, hass: HomeAssistant | None = None) -> dict:
     """Validate Pro license key with the WoonIoT server.
 
     Returns dict with: valid, reason, type, method (online/offline).
@@ -38,6 +38,8 @@ async def check_pro_license(key: str, dss_id: str) -> dict:
             ) as resp:
                 if resp.status == 200:
                     data = await resp.json()
+                    if hass is not None:
+                        await _cache_save(hass, key, bool(data.get("valid", False)), data.get("type"))
                     return {
                         "valid": data.get("valid", False),
                         "reason": data.get("reason", "ok" if data.get("valid") else "unknown"),
@@ -47,34 +49,49 @@ async def check_pro_license(key: str, dss_id: str) -> dict:
                     }
     except Exception:
         pass
-    # Offline fallback: verify HMAC signature of key
-    valid = _verify_key_offline(key)
+    # Offline fallback: the last successful ONLINE result for this key, at most
+    # OFFLINE_GRACE_DAYS old. No signing secret in the client (nov 2026): a secret
+    # in published code lets anyone forge keys once the server is unreachable.
+    cached = await _cache_load(hass, key) if hass is not None else None
+    valid = bool(cached and cached.get("valid"))
     return {
         "valid": valid,
-        "reason": "ok" if valid else "invalid_signature",
-        "type": "offline",
+        "reason": "ok" if valid else "offline_no_cache",
+        "type": cached.get("type") if valid else "offline",
         "method": "offline",
         "dss_id_sent": dss_short,
     }
 
 
-def _verify_key_offline(key: str) -> bool:
-    """Verify license key HMAC signature for offline validation."""
-    import hashlib
-    import hmac as _hmac
-    parts = key.split("-")
-    if len(parts) != 4:
-        return False
-    prefix = parts[0]
-    if prefix not in ("PRO", "TRIAL"):
-        return False
-    body = f"{prefix}-{parts[1]}-{parts[2]}"
-    # Signing key (split to discourage casual extraction)
-    _k = "wooniot" + "-ds-" + "pro-2026" + "-secret" + "-key"
-    sig = _hmac.new(
-        _k.encode(), body.encode(), hashlib.sha256
-    ).hexdigest()[:4].upper()
-    return parts[3] == sig
+OFFLINE_GRACE_DAYS = 30
+_CACHE_STORE_KEY = f"{DOMAIN}_license_cache"
+
+
+def _cache_store(hass: HomeAssistant):
+    from homeassistant.helpers.storage import Store
+    return Store(hass, 1, _CACHE_STORE_KEY)
+
+
+async def _cache_save(hass: HomeAssistant, key: str, valid: bool, ltype) -> None:
+    import time
+    try:
+        await _cache_store(hass).async_save(
+            {"key": key, "valid": valid, "type": ltype, "checked_at": time.time()})
+    except Exception as err:  # cache is best effort
+        _LOGGER.debug("License cache save failed: %s", err)
+
+
+async def _cache_load(hass: HomeAssistant, key: str):
+    import time
+    try:
+        data = await _cache_store(hass).async_load()
+    except Exception:
+        return None
+    if not data or data.get("key") != key or not data.get("valid"):
+        return None
+    if time.time() - float(data.get("checked_at") or 0) > OFFLINE_GRACE_DAYS * 86400:
+        return None
+    return data
 
 
 @callback

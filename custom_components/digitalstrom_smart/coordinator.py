@@ -3488,7 +3488,7 @@ class DigitalStromCoordinator(DataUpdateCoordinator):
         the set of platforms, so a status flip triggers a config-entry reload.
         """
         try:
-            result = await check_pro_license(self.pro_license_key, self.dss_id)
+            result = await check_pro_license(self.pro_license_key, self.dss_id, self.hass)
         except Exception as err:  # never let a recheck break the poll loop
             _LOGGER.debug("License recheck failed (non-fatal): %s", err)
             return
